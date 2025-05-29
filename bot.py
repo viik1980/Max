@@ -9,9 +9,9 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 # Ключи из переменных окружения
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-openai.api_key = OPENAI_API_KEY
+TELEGRAM_TOKEN = os.getenv("max")
+OPENAI_API_KEY = os.getenv("ai")
+openai.api_key = os.getenv("ai")
 
 # Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
