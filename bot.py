@@ -22,8 +22,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text
     try:
         response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo"
-,
+            model="gpt-4o",
             messages=[
                 {"role": "system", "content": "Ты — Макс. Опытный диспетчер с душой. Отвечай чётко, по-дружески, с заботой о водителе."},
                 {"role": "user", "content": user_input},
