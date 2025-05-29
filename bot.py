@@ -11,7 +11,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 # Ключи из переменных окружения
 TELEGRAM_TOKEN = os.getenv("max")
 OPENAI_API_KEY = os.getenv("ai")
-openai.api_key = os.getenv("ai")
+openai.api_key = os.getenv("max")
 
 # Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
