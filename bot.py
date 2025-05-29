@@ -15,9 +15,9 @@ if not TELEGRAM_TOKEN:
     raise ValueError("TELEGRAM_TOKEN is required.")
 logging.info(f"TELEGRAM_TOKEN loaded: {TELEGRAM_TOKEN[:5]}...")
 
-OPENAI_API_KEY = os.getenv("ai")
+OPENAI_API_KEY = os.getenv("Ai")
 if not OPENAI_API_KEY:
-    logging.error("OPENAI_API_KEY (ai) not found in environment variables! Check Railway settings.")
+    logging.error("OPENAI_API_KEY (Ai) not found in environment variables! Check Railway settings.")
     raise ValueError("OPENAI_API_KEY is required.")
 openai.api_key = OPENAI_API_KEY
 logging.info(f"OPENAI_API_KEY loaded: {OPENAI_API_KEY[:5]}...")
