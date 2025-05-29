@@ -12,9 +12,8 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 # Ключи из переменных среды
-TELEGRAM_TOKEN = os.getenv("7840777916:AAHGASeAhVDCMNd95ew1r8tNuvUX2sWROYA")
-OPENAI_API_KEY = os.getenv("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
-")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 openai.api_key = OPENAI_API_KEY
 
 # Обработка команд
