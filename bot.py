@@ -15,11 +15,15 @@ openai.api_key = os.getenv("ai")
 
 # Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Здорова, я — Макс. Диспетчер и друг. Пиши или говори — разберёмся!")
+    print("[LOG] Сработал /start")
+    await update.message.reply_text("Здорова, я — Макс. Пиши или говори — разберёмся!")
+
 
 # Обработка текстовых сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text
+    print(f"[LOG] Получено сообщение: {user_input}")
+    ...
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4o",
