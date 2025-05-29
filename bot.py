@@ -14,31 +14,27 @@ OPENAI_API_KEY = os.getenv("ai")
 openai.api_key = os.getenv("ai")
 
 # Команда /start
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print("[LOG] Сработал /start")
-    await update.message.reply_text("Здорова, я — Макс. Пиши или говори — разберёмся!")
-
-
-# Обработка текстовых сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text
     print(f"[LOG] Получено сообщение: {user_input}")
-    ...
+    
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "Ты — Макс. Опытный диспетчер с душой. Отвечай чётко, по-дружески, с заботой о водителе."},
-                {"role": "user", "content": user_input},
+                {"role": "system", "content": "Ты — Макс. Опытный диспетчер с душой. Отвечай по-дружески, по делу."},
+                {"role": "user", "content": user_input}
             ]
         )
-        logging.info(f"GPT ответ: {response}")
-
-        reply = response.choices[0].message.content if response.choices else "GPT не дал ответа. Попробуй ещё раз."
+        print(f"[LOG] Ответ от GPT: {response}")
+        
+        reply = response.choices[0].message.content if response.choices else "GPT не дал ответа."
         await update.message.reply_text(reply)
+
     except Exception as e:
-        logging.error(f"Ошибка при запросе к GPT: {e}")
-        await update.message.reply_text("⚠️ Макс немного притормозил. Проверь API-ключ или баланс, или напиши позже.")
+        print(f"[ERROR] Ошибка при обращении к GPT: {e}")
+        await update.message.reply_text("⚠️ Макс что-то не отвечает. Ошибка запроса к GPT.")
+
 
 # Обработка голосовых сообщений
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
