@@ -28,6 +28,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 {"role": "user", "content": user_input},
             ]
         )
+        logging.info(f"GPT ответ: {response}")
+
         reply = response.choices[0].message.content if response.choices else "GPT не дал ответа. Попробуй ещё раз."
         await update.message.reply_text(reply)
     except Exception as e:
