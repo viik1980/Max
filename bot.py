@@ -5,36 +5,52 @@ import tempfile
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
-# Настройка логирования
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+# === НАСТРОЙКА ===
 
-# Ключи из переменных окружения
-TELEGRAM_TOKEN = os.getenv("max")
-OPENAI_API_KEY = os.getenv("ai")
-openai.api_key = os.getenv("ai")
+# Включаем логирование
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
+
+# Telegram токен
+TELEGRAM_TOKEN = os.getenv("max")  # Или временно вставь прямо сюда
+# TELEGRAM_TOKEN = "ваш_telegram_token"
+
+# OpenAI ключ
+openai.api_key = "ai"  # Временно вставьте сюда
+
+# === ОБРАБОТЧИКИ ===
 
 # Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Здорова, я — Макс. Диспетчер и друг. Пиши или говори — разберёмся!")
+    await update.message.reply_text("Привет! Я — Макс. Говори, чем помочь?")
 
-# Обработка текстовых сообщений
+# Текстовые сообщения
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text
+    logging.info(f"📩 Получено сообщение: {user_input}")
+
     try:
+        logging.info("📤 Отправка запроса в OpenAI...")
         response = openai.ChatCompletion.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "Ты — Макс. Опытный диспетчер с душой. Отвечай чётко, по-дружески, с заботой о водителе."},
-                {"role": "user", "content": user_input},
+                {"role": "system", "content": "Ты — Макс. Опытный диспетчер с душой. Отвечай по-дружески, по делу."},
+                {"role": "user", "content": user_input}
             ]
         )
-        reply = response.choices[0].message.content if response.choices else "GPT не дал ответа. Попробуй ещё раз."
-        await update.message.reply_text(reply)
-    except Exception as e:
-        logging.error(f"Ошибка при запросе к GPT: {e}")
-        await update.message.reply_text("⚠️ Макс немного притормозил. Проверь API-ключ или баланс, или напиши позже.")
+        logging.info("📥 Ответ от OpenAI получен")
 
-# Обработка голосовых сообщений
+        if response and "choices" in response and len(response["choices"]) > 0:
+            reply = response["choices"][0]["message"]["content"]
+        else:
+            reply = "⚠️ GPT не дал ответа."
+
+        await update.message.reply_text(reply)
+
+    except Exception as e:
+        logging.error(f"❌ Ошибка от GPT: {e}")
+        await update.message.reply_text("⚠️ Макс не может ответить. GPT молчит или ошибка в запросе.")
+
+# Голосовые сообщения
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         file = await update.message.voice.get_file()
@@ -47,28 +63,38 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_text = transcript.get("text", "")
 
         if not user_text:
-            await update.message.reply_text("Не смог разобрать голос. Попробуй сказать снова.")
+            await update.message.reply_text("🗣️ Не смог разобрать голос. Скажи ещё раз?")
             return
 
         await update.message.reply_text(f"Ты сказал: {user_text}")
 
+        logging.info("📤 Отправка текста из голосового в OpenAI...")
         response = openai.ChatCompletion.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "Ты — Макс. Опытный диспетчер с душой. Отвечай чётко, по-дружески, с заботой о водителе."},
+                {"role": "system", "content": "Ты — Макс. Опытный диспетчер с заботой о водителях."},
                 {"role": "user", "content": user_text},
             ]
         )
-        reply = response.choices[0].message.content if response.choices else "GPT не дал ответа. Попробуй ещё раз."
-        await update.message.reply_text(reply)
-    except Exception as e:
-        logging.error(f"Ошибка при обработке голосового сообщения: {e}")
-        await update.message.reply_text("⚠️ Макс не смог обработать голос. Проверь формат или попробуй позже.")
+        logging.info("📥 Ответ от OpenAI получен")
 
-# Запуск бота
+        if response and "choices" in response and len(response["choices"]) > 0:
+            reply = response["choices"][0]["message"]["content"]
+        else:
+            reply = "⚠️ GPT не дал ответа."
+
+        await update.message.reply_text(reply)
+
+    except Exception as e:
+        logging.error(f"❌ Ошибка при обработке голоса: {e}")
+        await update.message.reply_text("⚠️ Макс не смог расшифровать голос или ответить. Попробуй ещё раз.")
+
+# === ЗАПУСК ===
+
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    logging.info("🚀 Бот Макс запущен и слушает Telegram...")
     app.run_polling()
