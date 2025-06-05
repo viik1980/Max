@@ -1,7 +1,7 @@
 import logging
 import os
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, JobQueue
 from dotenv import load_dotenv
 import requests
 
@@ -15,8 +15,8 @@ logging.basicConfig(
 
 # Переменные окружения
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-AI_PROVIDER = os.getenv("AI_PROVIDER", "max")  # По умолчанию Max
-MAX_API_URL = os.getenv("MAX_API_URL", "https://max-production-c297.up.railway.app/chat ") 
+AI_PROVIDER = os.getenv("AI_PROVIDER", "max")
+MAX_API_URL = os.getenv("MAX_API_URL", "https://your-max-api.railway.app/chat") 
 
 # Функция для получения ответа от Макса
 def get_max_response(query):
@@ -42,9 +42,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply = get_max_response(user_input)
     await update.message.reply_text(reply)
 
+# Обработка ошибок
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Логируем ошибки"""
+    logger = logging.getLogger(__name__)
+    logger.warning("Update '%s' caused error '%s'", update, context.error, exc_info=context.error)
+
 # Запуск бота
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.run_polling()
+    app.add_error_handler(error_handler)
+    app.run_polling(poll_interval=3)  # Добавлен интервал между опросами
