@@ -121,7 +121,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         messages.append({"role": "user", "content": user_text})
 
         response = openai.ChatCompletion.create(
-            model="gpt-4o",
+            model="gpt-3.5-turbo",
             messages=messages
         )
         logging.info(f"[LOG] GPT голосовой ответ: {response}")
