@@ -1,11 +1,10 @@
-import os
 import logging
+import os
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
 import requests
 
-# Загрузка переменных окружения
 load_dotenv()
 
 # Логирование
@@ -14,20 +13,18 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# Получение переменных
+# Переменные окружения
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-AI_PROVIDER = os.getenv("AI_PROVIDER", "gpt")  # По умолчанию GPT
+AI_PROVIDER = os.getenv("AI_PROVIDER", "max")  # По умолчанию Max
+MAX_API_URL = os.getenv("MAX_API_URL", "https://your-max-api.railway.app/chat") 
 
-# URL, куда обращается бот за ответом от меня
-AI_API_URL = "https://your-suvvy-api-url.com/chat" 
-
-# Функция для отправки запроса ко мне
-def get_suvvy_response(query):
+# Функция для получения ответа от Макса
+def get_max_response(query):
     try:
-        response = requests.post(AI_API_URL, json={"query": query})
+        response = requests.post(MAX_API_URL, json={"query": query})
         return response.json().get("response", "Ошибка получения ответа.")
     except Exception as e:
-        logging.error(f"Ошибка при вызове Suvvy.ai: {e}")
+        logging.error(f"Ошибка при вызове Макса: {e}")
         return "⚠️ Не могу получить ответ."
 
 # Команда /start
@@ -42,11 +39,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Напиши, чем могу помочь?")
         return
 
-    if AI_PROVIDER == "suvvy":
-        reply = get_suvvy_response(user_input)
-    else:
-        reply = "Не поддерживается пока что."
-
+    reply = get_max_response(user_input)
     await update.message.reply_text(reply)
 
 # Запуск бота
