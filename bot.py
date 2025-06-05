@@ -1,129 +1,96 @@
-import logging
 import os
-import openai
-import tempfile
 import time
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+import httpx
+import logging
 from dotenv import load_dotenv
+import openai
 
-# Загрузка переменных окружения
+# Загрузка переменных из .env
 load_dotenv()
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-ASSISTANT_ID = os.getenv("ASSISTANT_ID")  # ← Добавь в .env файл
+ASSISTANT_ID = os.getenv("ASSISTANT_ID")
 
-# if not TELEGRAM_TOKEN or not OPENAI_API_KEY or not ASSISTANT_ID:
-#   raise ValueError("Нужно задать TELEGRAM_TOKEN, OPENAI_API_KEY и ASSISTANT_ID в .env")
+if not TELEGRAM_TOKEN or not OPENAI_API_KEY or not ASSISTANT_ID:
+    raise ValueError("Нужно задать TELEGRAM_TOKEN, OPENAI_API_KEY и ASSISTANT_ID в .env")
 
 openai.api_key = OPENAI_API_KEY
+logging.basicConfig(level=logging.INFO)
 
-# Команда /start
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logging.info("[LOG] /start получена")
-    await update.message.reply_text("Здорова, я — Макс. Диспетчер и друг. Пиши или говори — разберёмся!")
+BASE_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
+LAST_UPDATE_ID = None
 
-# Обработка текстовых сообщений через Assistant API
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_input = update.message.text.strip()
-    logging.info(f"[LOG] Получено сообщение: {user_input}")
+def send_message(chat_id, text):
+    response = httpx.post(f"{BASE_URL}/sendMessage", json={
+        "chat_id": chat_id,
+        "text": text
+    })
+    logging.info(f"[SEND] {text} => {chat_id}")
+    return response
 
-    if not user_input:
-        await update.message.reply_text("Напиши, чем могу помочь?")
-        return
+def get_updates():
+    global LAST_UPDATE_ID
+    params = {"timeout": 30}
+    if LAST_UPDATE_ID:
+        params["offset"] = LAST_UPDATE_ID + 1
+    response = httpx.get(f"{BASE_URL}/getUpdates", params=params)
+    return response.json()["result"]
 
+def ask_openai(message_text):
     try:
-        # Создаём новый диалог (thread)
         thread = openai.beta.threads.create()
-
-        # Отправляем сообщение в thread
         openai.beta.threads.messages.create(
             thread_id=thread.id,
             role="user",
-            content=user_input
+            content=message_text
         )
-
-        # Запускаем ассистента
         run = openai.beta.threads.runs.create(
             thread_id=thread.id,
             assistant_id=ASSISTANT_ID
         )
 
-        # Ждём завершения
+        # Подождём выполнения
         while True:
-            run_status = openai.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
-            if run_status.status == "completed":
+            run = openai.beta.threads.runs.retrieve(
+                thread_id=thread.id, run_id=run.id
+            )
+            if run.status == "completed":
                 break
             time.sleep(1)
 
         # Получаем ответ
         messages = openai.beta.threads.messages.list(thread_id=thread.id)
-        for message in reversed(messages.data):
-            if message.role == "assistant":
-                reply = message.content[0].text.value
-                await update.message.reply_text(reply)
-                return
+        for m in reversed(messages.data):
+            if m.role == "assistant":
+                return m.content[0].text.value
 
-        await update.message.reply_text("⚠️ Макс не дал ответа.")
+        return "Я что-то не понял 🤔"
     except Exception as e:
         logging.error(f"[ERROR] GPT Assistant API ошибка: {e}")
-        await update.message.reply_text("⚠️ Макс не может связаться с GPT. Ошибка.")
+        return "Произошла ошибка при обращении к ИИ 🤖"
 
-# Обработка голосовых сообщений (с расшифровкой и отправкой в ассистента)
-async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        file = await update.message.voice.get_file()
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".oga") as f:
-            await file.download_to_drive(f.name)
-            audio_path = f.name
+def main():
+    global LAST_UPDATE_ID
+    logging.info("Бот запущен. Ожидаю сообщения...")
 
-        with open(audio_path, "rb") as audio_file:
-            transcript = openai.Audio.transcribe("whisper-1", audio_file)
-            user_text = transcript.get("text", "")
+    while True:
+        try:
+            updates = get_updates()
+            for update in updates:
+                LAST_UPDATE_ID = update["update_id"]
+                if "message" in update:
+                    chat_id = update["message"]["chat"]["id"]
+                    text = update["message"].get("text", "")
+                    logging.info(f"[LOG] Получено сообщение: {text}")
+                    if text == "/start":
+                        send_message(chat_id, "Привет! Я Дежурный Макс 👋 Готов помочь. Просто напиши мне.")
+                    elif text:
+                        reply = ask_openai(text)
+                        send_message(chat_id, reply)
+        except Exception as e:
+            logging.error(f"[ERROR] {e}")
+            time.sleep(3)
 
-        if not user_text:
-            await update.message.reply_text("Не смог разобрать голос. Попробуй снова.")
-            return
-
-        await update.message.reply_text(f"Ты сказал: {user_text}")
-
-        # Далее как с текстом
-        thread = openai.beta.threads.create()
-        openai.beta.threads.messages.create(
-            thread_id=thread.id,
-            role="user",
-            content=user_text
-        )
-        run = openai.beta.threads.runs.create(
-            thread_id=thread.id,
-            assistant_id=ASSISTANT_ID
-        )
-        while True:
-            run_status = openai.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
-            if run_status.status == "completed":
-                break
-            time.sleep(1)
-        messages = openai.beta.threads.messages.list(thread_id=thread.id)
-        for message in reversed(messages.data):
-            if message.role == "assistant":
-                reply = message.content[0].text.value
-                await update.message.reply_text(reply)
-                return
-
-        await update.message.reply_text("⚠️ Макс не дал ответа.")
-    except Exception as e:
-        logging.error(f"[ERROR] Ошибка при голосе: {e}")
-        await update.message.reply_text("⚠️ Не получилось обработать голос.")
-
-# Запуск Telegram бота
-if __name__ == '__main__':
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.add_handler(MessageHandler(filters.VOICE, handle_voice))
-    app.run_polling()
+if __name__ == "__main__":
+    main()
