@@ -1,11 +1,10 @@
 import os
 import time
 import httpx
+import openai
 import logging
 from dotenv import load_dotenv
-import openai
 
-# Загрузка переменных из .env
 load_dotenv()
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -16,81 +15,91 @@ if not TELEGRAM_TOKEN or not OPENAI_API_KEY or not ASSISTANT_ID:
     raise ValueError("Нужно задать TELEGRAM_TOKEN, OPENAI_API_KEY и ASSISTANT_ID в .env")
 
 openai.api_key = OPENAI_API_KEY
-logging.basicConfig(level=logging.INFO)
 
-BASE_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
-LAST_UPDATE_ID = None
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger()
+
+TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
+user_threads = {}  # Хранит thread_id для каждого пользователя
+
+def get_updates(offset=None):
+    try:
+        res = httpx.get(f"{TELEGRAM_API_URL}/getUpdates", params={"timeout": 30, "offset": offset}, timeout=60)
+        res.raise_for_status()
+        return res.json().get("result", [])
+    except Exception as e:
+        logger.error(f"[ERROR] get_updates: {e}")
+        return []
 
 def send_message(chat_id, text):
-    response = httpx.post(f"{BASE_URL}/sendMessage", json={
-        "chat_id": chat_id,
-        "text": text
-    })
-    logging.info(f"[SEND] {text} => {chat_id}")
-    return response
-
-def get_updates():
-    global LAST_UPDATE_ID
-    params = {"timeout": 30}
-    if LAST_UPDATE_ID:
-        params["offset"] = LAST_UPDATE_ID + 1
-    response = httpx.get(f"{BASE_URL}/getUpdates", params=params)
-    return response.json()["result"]
-
-def ask_openai(message_text):
     try:
-        thread = openai.beta.threads.create()
+        httpx.post(f"{TELEGRAM_API_URL}/sendMessage", json={"chat_id": chat_id, "text": text}, timeout=30)
+        logger.info(f"[SEND] Сообщение отправлено => {chat_id}")
+    except Exception as e:
+        logger.error(f"[ERROR] send_message: {e}")
+
+def ask_assistant(user_id, message_text):
+    try:
+        # Создаём thread, если нет
+        thread_id = user_threads.get(user_id)
+        if not thread_id:
+            thread = openai.beta.threads.create()
+            thread_id = thread.id
+            user_threads[user_id] = thread_id
+            logger.info(f"[THREAD] Создан новый thread для {user_id}: {thread_id}")
+
+        # Добавляем сообщение от пользователя
         openai.beta.threads.messages.create(
-            thread_id=thread.id,
+            thread_id=thread_id,
             role="user",
             content=message_text
         )
+
+        # Запускаем ассистента
         run = openai.beta.threads.runs.create(
-            thread_id=thread.id,
+            thread_id=thread_id,
             assistant_id=ASSISTANT_ID
         )
 
-        # Подождём выполнения
+        # Ждём завершения
         while True:
-            run = openai.beta.threads.runs.retrieve(
-                thread_id=thread.id, run_id=run.id
-            )
-            if run.status == "completed":
+            run_status = openai.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run.id)
+            if run_status.status == "completed":
                 break
+            elif run_status.status == "failed":
+                return "❌ Ошибка при запуске ассистента."
             time.sleep(1)
 
         # Получаем ответ
-        messages = openai.beta.threads.messages.list(thread_id=thread.id)
-        for m in reversed(messages.data):
-            if m.role == "assistant":
-                return m.content[0].text.value
+        messages = openai.beta.threads.messages.list(thread_id=thread_id)
+        for msg in reversed(messages.data):
+            if msg.role == "assistant":
+                return msg.content[0].text.value
 
-        return "Я что-то не понял 🤔"
+        return "🤖 Ассистент не дал ответ."
     except Exception as e:
-        logging.error(f"[ERROR] GPT Assistant API ошибка: {e}")
-        return "Произошла ошибка при обращении к ИИ 🤖"
+        logger.error(f"[ERROR] GPT Assistant API: {e}")
+        return "❌ Ошибка при обращении к ассистенту."
 
 def main():
-    global LAST_UPDATE_ID
-    logging.info("Бот запущен. Ожидаю сообщения...")
+    logger.info("Бот запущен. Ожидаю сообщения...")
+    offset = None
 
     while True:
-        try:
-            updates = get_updates()
-            for update in updates:
-                LAST_UPDATE_ID = update["update_id"]
-                if "message" in update:
-                    chat_id = update["message"]["chat"]["id"]
-                    text = update["message"].get("text", "")
-                    logging.info(f"[LOG] Получено сообщение: {text}")
-                    if text == "/start":
-                        send_message(chat_id, "Привет! Я Дежурный Макс 👋 Готов помочь. Просто напиши мне.")
-                    elif text:
-                        reply = ask_openai(text)
-                        send_message(chat_id, reply)
-        except Exception as e:
-            logging.error(f"[ERROR] {e}")
-            time.sleep(3)
+        updates = get_updates(offset)
+        for update in updates:
+            offset = update["update_id"] + 1
+
+            if "message" in update and "text" in update["message"]:
+                chat_id = update["message"]["chat"]["id"]
+                user_id = update["message"]["from"]["id"]
+                text = update["message"]["text"]
+
+                logger.info(f"[RECV] {text} от {user_id}")
+                reply = ask_assistant(user_id, text)
+                send_message(chat_id, reply)
+
+        time.sleep(1)
 
 if __name__ == "__main__":
     main()
