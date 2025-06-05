@@ -1,140 +1,105 @@
-import logging
 import os
+import time
+import httpx
 import openai
-import tempfile
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+import logging
 from dotenv import load_dotenv
 
-# Загрузка переменных окружения из .env файла
 load_dotenv()
 
-# Логирование
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-
-# Переменные окружения
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+ASSISTANT_ID = os.getenv("ASSISTANT_ID")
 
-if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
-    raise ValueError("Не установлены обязательные переменные окружения: TELEGRAM_TOKEN или OPENAI_API_KEY.")
+if not TELEGRAM_TOKEN or not OPENAI_API_KEY or not ASSISTANT_ID:
+    raise ValueError("Нужно задать TELEGRAM_TOKEN, OPENAI_API_KEY и ASSISTANT_ID в .env")
 
 openai.api_key = OPENAI_API_KEY
 
-# Системный промт (из файла prompt.txt или по умолчанию)
-try:
-    with open("prompt.txt", "r", encoding="utf-8") as f:
-        SYSTEM_PROMPT = f.read()
-except FileNotFoundError:
-    SYSTEM_PROMPT = "Ты — Макс. Опытный диспетчер. Отвечай по-дружески, с заботой, по делу."
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger()
 
-# Загрузка всей базы знаний из папки knowledge
-def load_all_knowledge():
-    knowledge_dir = "knowledge"
-    texts = []
-    if not os.path.exists(knowledge_dir):
-        logging.warning(f"Папка с базой знаний '{knowledge_dir}' не найдена.")
-        return ""
-    files = os.listdir(knowledge_dir)
-    logging.info(f"Найдено файлов в knowledge: {files}")
-    for filename in sorted(files):
-        # Для отладки убираем фильтр по расширению
-        path = os.path.join(knowledge_dir, filename)
-        if os.path.isfile(path):
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    content = f.read().strip()
-                    if content:
-                        texts.append(f"=== {filename} ===\n{content}\n")
-                    else:
-                        logging.warning(f"Файл {filename} пустой.")
-            except Exception as e:
-                logging.error(f"Ошибка чтения файла базы знаний {filename}: {e}")
-        else:
-            logging.info(f"{filename} не файл, пропускаем.")
-    return "\n".join(texts)
+TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
+user_threads = {}  # Хранит thread_id для каждого пользователя
 
-
-KNOWLEDGE_BASE = load_all_knowledge()
-logging.info(f"Загружена база знаний, символов: {len(KNOWLEDGE_BASE)}")
-
-# Команда /start
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logging.info("[LOG] /start получена")
-    await update.message.reply_text("Здорова, я — Макс. Диспетчер и друг. Пиши или говори — разберёмся!")
-
-# Обработка текстовых сообщений
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_input = update.message.text.strip()
-    logging.info(f"[LOG] Получено сообщение: {user_input}")
-
-    if not user_input:
-        await update.message.reply_text("Напиши, чем могу помочь?")
-        return
-
+def get_updates(offset=None):
     try:
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-        ]
-        if KNOWLEDGE_BASE:
-            messages.append({"role": "system", "content": "📚 Вот база знаний для помощи:\n" + KNOWLEDGE_BASE})
-        messages.append({"role": "user", "content": user_input})
-
-        response = openai.ChatCompletion.create(
-            model="gpt-4o",
-            messages=messages
-        )
-        logging.info(f"[LOG] GPT сырой ответ: {response}")
-        reply = response.choices[0].message.content if response.choices else "GPT не дал ответа."
-        await update.message.reply_text(reply)
-
+        res = httpx.get(f"{TELEGRAM_API_URL}/getUpdates", params={"timeout": 30, "offset": offset}, timeout=60)
+        res.raise_for_status()
+        return res.json().get("result", [])
     except Exception as e:
-        logging.error(f"[ERROR] GPT не сработал: {e}")
-        await update.message.reply_text("⚠️ Макс не может связаться с GPT. Ошибка запроса.")
+        logger.error(f"[ERROR] get_updates: {e}")
+        return []
 
-# Обработка голосовых сообщений
-async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def send_message(chat_id, text):
     try:
-        file = await update.message.voice.get_file()
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".oga") as f:
-            await file.download_to_drive(f.name)
-            audio_path = f.name
-
-        with open(audio_path, "rb") as audio_file:
-            transcript = openai.Audio.transcribe("whisper-1", audio_file)
-            user_text = transcript.get("text", "")
-
-        if not user_text:
-            await update.message.reply_text("Не смог разобрать голос. Попробуй сказать снова.")
-            return
-
-        await update.message.reply_text(f"Ты сказал: {user_text}")
-
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-        ]
-        if KNOWLEDGE_BASE:
-            messages.append({"role": "system", "content": "📚 Вот база знаний для помощи:\n" + KNOWLEDGE_BASE})
-        messages.append({"role": "user", "content": user_text})
-
-        response = openai.ChatCompletion.create(
-            model="gpt-4o",
-            messages=messages
-        )
-        logging.info(f"[LOG] GPT голосовой ответ: {response}")
-        reply = response.choices[0].message.content if response.choices else "GPT не дал ответа."
-        await update.message.reply_text(reply)
+        httpx.post(f"{TELEGRAM_API_URL}/sendMessage", json={"chat_id": chat_id, "text": text}, timeout=30)
+        logger.info(f"[SEND] Сообщение отправлено => {chat_id}")
     except Exception as e:
-        logging.error(f"Ошибка при обработке голосового сообщения: {e}")
-        await update.message.reply_text("⚠️ Макс не смог обработать голос. Проверь формат или попробуй позже.")
+        logger.error(f"[ERROR] send_message: {e}")
 
-# Запуск бота
-if __name__ == '__main__':
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.add_handler(MessageHandler(filters.VOICE, handle_voice))
-    app.run_polling()
+def ask_assistant(user_id, message_text):
+    try:
+        # Создаём thread, если нет
+        thread_id = user_threads.get(user_id)
+        if not thread_id:
+            thread = openai.beta.threads.create()
+            thread_id = thread.id
+            user_threads[user_id] = thread_id
+            logger.info(f"[THREAD] Создан новый thread для {user_id}: {thread_id}")
+
+        # Добавляем сообщение от пользователя
+        openai.beta.threads.messages.create(
+            thread_id=thread_id,
+            role="user",
+            content=message_text
+        )
+
+        # Запускаем ассистента
+        run = openai.beta.threads.runs.create(
+            thread_id=thread_id,
+            assistant_id=ASSISTANT_ID
+        )
+
+        # Ждём завершения
+        while True:
+            run_status = openai.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run.id)
+            if run_status.status == "completed":
+                break
+            elif run_status.status == "failed":
+                return "❌ Ошибка при запуске ассистента."
+            time.sleep(1)
+
+        # Получаем ответ
+        messages = openai.beta.threads.messages.list(thread_id=thread_id)
+        for msg in reversed(messages.data):
+            if msg.role == "assistant":
+                return msg.content[0].text.value
+
+        return "🤖 Ассистент не дал ответ."
+    except Exception as e:
+        logger.error(f"[ERROR] GPT Assistant API: {e}")
+        return "❌ Ошибка при обращении к ассистенту."
+
+def main():
+    logger.info("Бот запущен. Ожидаю сообщения...")
+    offset = None
+
+    while True:
+        updates = get_updates(offset)
+        for update in updates:
+            offset = update["update_id"] + 1
+
+            if "message" in update and "text" in update["message"]:
+                chat_id = update["message"]["chat"]["id"]
+                user_id = update["message"]["from"]["id"]
+                text = update["message"]["text"]
+
+                logger.info(f"[RECV] {text} от {user_id}")
+                reply = ask_assistant(user_id, text)
+                send_message(chat_id, reply)
+
+        time.sleep(1)
+
+if __name__ == "__main__":
+    main()
