@@ -31,34 +31,59 @@ try:
 except FileNotFoundError:
     SYSTEM_PROMPT = "Ты — Макс. Опытный диспетчер. Отвечай по-дружески, с заботой, по делу."
 
+# Загрузка всей базы знаний из папки knowledge
+def load_all_knowledge():
+    knowledge_dir = "knowledge"  # Папка с файлами базы знаний
+    texts = []
+    if not os.path.exists(knowledge_dir):
+        logging.warning(f"Папка с базой знаний '{knowledge_dir}' не найдена.")
+        return ""
+    for filename in sorted(os.listdir(knowledge_dir)):
+        if filename.endswith(".txt"):
+            path = os.path.join(knowledge_dir, filename)
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    content = f.read().strip()
+                    texts.append(f"=== {filename} ===\n{content}\n")
+            except Exception as e:
+                logging.error(f"Ошибка чтения файла базы знаний {filename}: {e}")
+    return "\n".join(texts)
+
+KNOWLEDGE_BASE = load_all_knowledge()
+logging.info(f"Загружена база знаний, символов: {len(KNOWLEDGE_BASE)}")
+
 # Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print("[LOG] /start получена")
+    logging.info("[LOG] /start получена")
     await update.message.reply_text("Здорова, я — Макс. Диспетчер и друг. Пиши или говори — разберёмся!")
 
 # Обработка текстовых сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text.strip()
-    print(f"[LOG] Получено сообщение: {user_input}")
+    logging.info(f"[LOG] Получено сообщение: {user_input}")
 
     if not user_input:
         await update.message.reply_text("Напиши, чем могу помочь?")
         return
 
     try:
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+        ]
+        if KNOWLEDGE_BASE:
+            messages.append({"role": "system", "content": "📚 Вот база знаний для помощи:\n" + KNOWLEDGE_BASE})
+        messages.append({"role": "user", "content": user_input})
+
         response = openai.ChatCompletion.create(
             model="gpt-4o",
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_input},
-            ]
+            messages=messages
         )
-        print(f"[LOG] GPT сырой ответ: {response}")
+        logging.info(f"[LOG] GPT сырой ответ: {response}")
         reply = response.choices[0].message.content if response.choices else "GPT не дал ответа."
         await update.message.reply_text(reply)
 
     except Exception as e:
-        print(f"[ERROR] GPT не сработал: {e}")
+        logging.error(f"[ERROR] GPT не сработал: {e}")
         await update.message.reply_text("⚠️ Макс не может связаться с GPT. Ошибка запроса.")
 
 # Обработка голосовых сообщений
@@ -79,14 +104,18 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(f"Ты сказал: {user_text}")
 
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+        ]
+        if KNOWLEDGE_BASE:
+            messages.append({"role": "system", "content": "📚 Вот база знаний для помощи:\n" + KNOWLEDGE_BASE})
+        messages.append({"role": "user", "content": user_text})
+
         response = openai.ChatCompletion.create(
             model="gpt-4o",
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_text},
-            ]
+            messages=messages
         )
-        print(f"[LOG] GPT голосовой ответ: {response}")
+        logging.info(f"[LOG] GPT голосовой ответ: {response}")
         reply = response.choices[0].message.content if response.choices else "GPT не дал ответа."
         await update.message.reply_text(reply)
     except Exception as e:
