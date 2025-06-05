@@ -1,7 +1,6 @@
 import os
 import time
 import httpx
-import openai
 import logging
 from dotenv import load_dotenv
 
@@ -12,15 +11,19 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ASSISTANT_ID = os.getenv("ASSISTANT_ID")
 
 if not TELEGRAM_TOKEN or not OPENAI_API_KEY or not ASSISTANT_ID:
-    raise ValueError("Нужно задать TELEGRAM_TOKEN, OPENAI_API_KEY и ASSISTANT_ID в .env")
-
-openai.api_key = OPENAI_API_KEY
+    raise ValueError("Нужно задать TELEGRAM_TOKEN, OPENAI_API_KEY и ASSISTANT_ID")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger()
 
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
-user_threads = {}  # Хранит thread_id для каждого пользователя
+
+user_threads = {}  # user_id -> thread_id mapping
+
+HEADERS = {
+    "Authorization": f"Bearer {OPENAI_API_KEY}",
+    "Content-Type": "application/json"
+}
 
 def get_updates(offset=None):
     try:
@@ -38,47 +41,108 @@ def send_message(chat_id, text):
     except Exception as e:
         logger.error(f"[ERROR] send_message: {e}")
 
+def create_thread():
+    url = "https://api.openai.com/v1/beta/threads"
+    try:
+        response = httpx.post(url, headers=HEADERS, timeout=30)
+        response.raise_for_status()
+        return response.json()["id"]
+    except Exception as e:
+        logger.error(f"[ERROR] create_thread: {e}")
+        return None
+
+def add_user_message(thread_id, content):
+    url = f"https://api.openai.com/v1/beta/threads/{thread_id}/messages"
+    data = {
+        "role": "user",
+        "content": content
+    }
+    try:
+        response = httpx.post(url, headers=HEADERS, json=data, timeout=30)
+        response.raise_for_status()
+        return True
+    except Exception as e:
+        logger.error(f"[ERROR] add_user_message: {e}")
+        return False
+
+def run_assistant(thread_id):
+    url = f"https://api.openai.com/v1/beta/threads/{thread_id}/runs"
+    data = {
+        "assistant_id": ASSISTANT_ID
+    }
+    try:
+        response = httpx.post(url, headers=HEADERS, json=data, timeout=30)
+        response.raise_for_status()
+        return response.json()["id"]
+    except Exception as e:
+        logger.error(f"[ERROR] run_assistant: {e}")
+        return None
+
+def get_run_status(thread_id, run_id):
+    url = f"https://api.openai.com/v1/beta/threads/{thread_id}/runs/{run_id}"
+    try:
+        response = httpx.get(url, headers=HEADERS, timeout=30)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        logger.error(f"[ERROR] get_run_status: {e}")
+        return None
+
+def get_messages(thread_id):
+    url = f"https://api.openai.com/v1/beta/threads/{thread_id}/messages"
+    try:
+        response = httpx.get(url, headers=HEADERS, timeout=30)
+        response.raise_for_status()
+        return response.json().get("data", [])
+    except Exception as e:
+        logger.error(f"[ERROR] get_messages: {e}")
+        return []
+
 def ask_assistant(user_id, message_text):
     try:
-        # Создаём thread, если нет
         thread_id = user_threads.get(user_id)
         if not thread_id:
-            thread = openai.beta.threads.create()
-            thread_id = thread.id
+            thread_id = create_thread()
+            if not thread_id:
+                return "❌ Не удалось создать диалог с ассистентом."
             user_threads[user_id] = thread_id
             logger.info(f"[THREAD] Создан новый thread для {user_id}: {thread_id}")
 
-        # Добавляем сообщение от пользователя
-        openai.beta.threads.messages.create(
-            thread_id=thread_id,
-            role="user",
-            content=message_text
-        )
+        if not add_user_message(thread_id, message_text):
+            return "❌ Ошибка при добавлении сообщения."
 
-        # Запускаем ассистента
-        run = openai.beta.threads.runs.create(
-            thread_id=thread_id,
-            assistant_id=ASSISTANT_ID
-        )
+        run_id = run_assistant(thread_id)
+        if not run_id:
+            return "❌ Ошибка при запуске ассистента."
 
-        # Ждём завершения
-        while True:
-            run_status = openai.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run.id)
-            if run_status.status == "completed":
+        # Ждем пока run завершится
+        for _ in range(30):  # максимум 30 попыток по 1 секунде = 30 секунд
+            status_data = get_run_status(thread_id, run_id)
+            if not status_data:
                 break
-            elif run_status.status == "failed":
-                return "❌ Ошибка при запуске ассистента."
+            status = status_data.get("status")
+            if status == "completed":
+                break
+            elif status == "failed":
+                return "❌ Ассистент завершился с ошибкой."
             time.sleep(1)
+        else:
+            return "❌ Таймаут ожидания ответа ассистента."
 
-        # Получаем ответ
-        messages = openai.beta.threads.messages.list(thread_id=thread_id)
-        for msg in reversed(messages.data):
-            if msg.role == "assistant":
-                return msg.content[0].text.value
-
+        # Получаем последние сообщения
+        messages = get_messages(thread_id)
+        # Ищем последнее сообщение от ассистента
+        for msg in reversed(messages):
+            if msg.get("role") == "assistant":
+                # Возвращаем текст ответа
+                content = msg.get("content")
+                # content — это список, берем первый элемент и его текст
+                if isinstance(content, list) and len(content) > 0:
+                    return content[0].get("text", "🤖 Ответ пуст.")
+                return "🤖 Ответ пуст."
         return "🤖 Ассистент не дал ответ."
     except Exception as e:
-        logger.error(f"[ERROR] GPT Assistant API: {e}")
+        logger.error(f"[ERROR] ask_assistant: {e}")
         return "❌ Ошибка при обращении к ассистенту."
 
 def main():
