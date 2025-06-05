@@ -35,8 +35,9 @@ openai.api_key = OPENAI_API_KEY
 try:
     with open("prompt.txt", "r", encoding="utf-8") as f:
         SYSTEM_PROMPT = f.read()
+        Rezim_RTO=load
 except FileNotFoundError:
-    SYSTEM_PROMPT = "Ты — Макс. Опытный диспетчер. Отвечай по-дружески, с заботой, по делу."
+    SYSTEM_PROMPT = "Ты — Макс. Опытный диспетчер. Отвечай по-дружески, с заботой, по делу и с уместным юмором."
 
 # Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
