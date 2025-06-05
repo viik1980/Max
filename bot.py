@@ -9,6 +9,13 @@ from dotenv import load_dotenv
 # Загрузка переменных окружения из .env файла
 load_dotenv()
 
+def load_knowledge(filename):
+    try:
+        with open(f"knowledge/{filename}", "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        return ""
+
 # Логирование
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
