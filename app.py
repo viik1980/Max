@@ -16,7 +16,7 @@ logging.basicConfig(
 # Переменные окружения
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 AI_PROVIDER = os.getenv("AI_PROVIDER", "max")  # По умолчанию Max
-MAX_API_URL = os.getenv("MAX_API_URL", "https://your-max-api.railway.app/chat") 
+MAX_API_URL = os.getenv("MAX_API_URL", "https://max-production-c297.up.railway.app/chat ") 
 
 # Функция для получения ответа от Макса
 def get_max_response(query):
