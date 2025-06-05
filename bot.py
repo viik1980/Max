@@ -1,17 +1,31 @@
 import logging
 import os
 import openai
-import tempfile
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from dotenv import load_dotenv
 
-# Настройка логирования
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+# Загрузка переменных окружения из .env файла
+load_dotenv()
 
-# Ключи из переменных окружения
-TELEGRAM_TOKEN = os.getenv("max")
-OPENAI_API_KEY = os.getenv("Ai")
-openai.api_key = os.getenv("Ai")
+# Логирование
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+
+# Переменные окружения
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
+    raise ValueError("Не установлены обязательные переменные окружения: TELEGRAM_TOKEN или OPENAI_API_KEY.")
+
+openai.api_key = OPENAI_API_KEY
+
+# Системный промт (из файла prompt.txt)
+with open("prompt.txt", "r", encoding="utf-8") as f:
+    SYSTEM_PROMPT = f.read()
 
 # Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -19,16 +33,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Обработка текстовых сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_input = update.message.text
+    user_input = update.message.text.strip()
+    
+    if not user_input:
+        await update.message.reply_text("Напиши, чем могу помочь?")
+        return
+
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "Ты — Макс. Опытный диспетчер с душой. Отвечай чётко, по-дружески, с заботой о водителе."},
+                {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_input},
             ]
         )
-        reply = response.choices[0].message.content if response.choices else "GPT не дал ответа. Попробуй ещё раз."
+        reply = response.choices[0].message.content if response.choices else "GPT не дал ответа."
         await update.message.reply_text(reply)
     except Exception as e:
         logging.error(f"Ошибка при запросе к GPT: {e}")
@@ -55,11 +74,11 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         response = openai.ChatCompletion.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "Ты — Макс. Опытный диспетчер с душой. Отвечай чётко, по-дружески, с заботой о водителе."},
+                {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_text},
             ]
         )
-        reply = response.choices[0].message.content if response.choices else "GPT не дал ответа. Попробуй ещё раз."
+        reply = response.choices[0].message.content if response.choices else "GPT не дал ответа."
         await update.message.reply_text(reply)
     except Exception as e:
         logging.error(f"Ошибка при обработке голосового сообщения: {e}")
