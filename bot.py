@@ -9,12 +9,25 @@ from dotenv import load_dotenv
 # Загрузка переменных окружения из .env файла
 load_dotenv()
 
+# Загрузка файла из папки knowledge
 def load_knowledge(filename):
     try:
         with open(f"knowledge/{filename}", "r", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
         return ""
+
+# Загрузка всех файлов из папки knowledge
+def load_all_knowledge():
+    knowledge_base = ""
+    knowledge_dir = "knowledge"
+    if os.path.exists(knowledge_dir):
+        for filename in os.listdir(knowledge_dir):
+            if filename.endswith(".txt"):
+                knowledge_base += f"\n--- {filename} ---\n"
+                knowledge_base += load_knowledge(filename)
+                knowledge_base += "\n"
+    return knowledge_base.strip()
 
 # Логирование
 logging.basicConfig(
@@ -31,13 +44,15 @@ if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
 
 openai.api_key = OPENAI_API_KEY
 
-# Системный промт (из файла prompt.txt или по умолчанию)
+# Системный промт (из файла или по умолчанию)
 try:
     with open("prompt.txt", "r", encoding="utf-8") as f:
         SYSTEM_PROMPT = f.read()
-    
 except FileNotFoundError:
     SYSTEM_PROMPT = "Ты — Макс. Опытный диспетчер. Отвечай по-дружески, с заботой, по делу и с уместным юмором."
+
+# Загрузка базы знаний
+KNOWLEDGE_BASE = load_all_knowledge()
 
 # Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -54,13 +69,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": "📚 Вот база знаний:\n" + KNOWLEDGE_BASE},
+            {"role": "user", "content": user_input},
+        ]
+
         response = openai.ChatCompletion.create(
             model="gpt-4o",
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_input},
-            ]
+            messages=messages
         )
+
         print(f"[LOG] GPT сырой ответ: {response}")
         reply = response.choices[0].message.content if response.choices else "GPT не дал ответа."
         await update.message.reply_text(reply)
@@ -87,13 +106,17 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(f"Ты сказал: {user_text}")
 
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": "📚 Вот база знаний:\n" + KNOWLEDGE_BASE},
+            {"role": "user", "content": user_text},
+        ]
+
         response = openai.ChatCompletion.create(
             model="gpt-4o",
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_text},
-            ]
+            messages=messages
         )
+
         print(f"[LOG] GPT голосовой ответ: {response}")
         reply = response.choices[0].message.content if response.choices else "GPT не дал ответа."
         await update.message.reply_text(reply)
