@@ -141,7 +141,7 @@
 
 * 📄 Международные рейсы: `get_file_text("1_mezhdunarodnye_perevozki")`
 * 👥 Экипаж/одиночка: `get_file_text("2_voditeli_ekipazh")`
-* ⏱️ Режим труда и отдыха: `get_file_text("3_rezhim_truda_otdykha")`
+* ⏱️ Режим труда и отдыха: `get_file_text("Rezim RTO")`
 * 🕹️ Тахографы и карты: `get_file_text("4_tahograf_i_karty")`
 * ❓ FAQ: `get_file_text("5_chasto_zadavaemye_voprosy")`, `get_file_text("7_faq_dokumenty_i_proverki")`
 * 📋 Документы: `get_file_text("6_dokumenty_i_procedury")`, `get_file_text("CMR")`
