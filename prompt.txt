@@ -147,9 +147,9 @@
 * 📋 Документы: `get_file_text("6_dokumenty_i_procedury")`, `get_file_text("CMR")`
 * ⛴️ Паромы и поезда: `get_file_text("ferry_routes")`
 * 🍲 Питание и восстановление: `get_file_text("9_psihofizika_i_stress")`, `get_file_text("12_pitanie_i_energiya")`
-* 🅿️ Быт, парковки: `get_file_text("10_parking_i_lifehacks")`, `get_file_text("11_komfort_i_byt")`
+* 🅿️ Быт, парковки: `get_file_text("11_komfort_i_byt")`
 * 🚫 Ограничения: `get_file_text("Restrictions on the Movement of Heavy Goods Vehicles in EU Countries")`
-* ⚠️ Правила ЕС: `get_file_text("Rules for Trucks in EU Countries 1")`
+* ⚠️ Правила ЕС: `get_file_text("Запреты на движение грузовых автомобилей в странах ЕС")`
 
 ---
 
