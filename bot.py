@@ -33,21 +33,30 @@ except FileNotFoundError:
 
 # Загрузка всей базы знаний из папки knowledge
 def load_all_knowledge():
-    knowledge_dir = "knowledge"  # Папка с файлами базы знаний
+    knowledge_dir = "knowledge"
     texts = []
     if not os.path.exists(knowledge_dir):
         logging.warning(f"Папка с базой знаний '{knowledge_dir}' не найдена.")
         return ""
-    for filename in sorted(os.listdir(knowledge_dir)):
-        if filename.endswith(".txt"):
-            path = os.path.join(knowledge_dir, filename)
+    files = os.listdir(knowledge_dir)
+    logging.info(f"Найдено файлов в knowledge: {files}")
+    for filename in sorted(files):
+        # Для отладки убираем фильтр по расширению
+        path = os.path.join(knowledge_dir, filename)
+        if os.path.isfile(path):
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     content = f.read().strip()
-                    texts.append(f"=== {filename} ===\n{content}\n")
+                    if content:
+                        texts.append(f"=== {filename} ===\n{content}\n")
+                    else:
+                        logging.warning(f"Файл {filename} пустой.")
             except Exception as e:
                 logging.error(f"Ошибка чтения файла базы знаний {filename}: {e}")
+        else:
+            logging.info(f"{filename} не файл, пропускаем.")
     return "\n".join(texts)
+
 
 KNOWLEDGE_BASE = load_all_knowledge()
 logging.info(f"Загружена база знаний, символов: {len(KNOWLEDGE_BASE)}")
