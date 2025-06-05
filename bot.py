@@ -18,8 +18,8 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ASSISTANT_ID = os.getenv("ASSISTANT_ID")  # ← Добавь в .env файл
 
-if not TELEGRAM_TOKEN or not OPENAI_API_KEY or not ASSISTANT_ID:
-    raise ValueError("Нужно задать TELEGRAM_TOKEN, OPENAI_API_KEY и ASSISTANT_ID в .env")
+# if not TELEGRAM_TOKEN or not OPENAI_API_KEY or not ASSISTANT_ID:
+#   raise ValueError("Нужно задать TELEGRAM_TOKEN, OPENAI_API_KEY и ASSISTANT_ID в .env")
 
 openai.api_key = OPENAI_API_KEY
 
