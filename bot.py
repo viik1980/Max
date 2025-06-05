@@ -53,12 +53,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 {"role": "user", "content": user_input},
             ]
         )
-        print(f"[LOG] GPT ответ: {response}")
+        print(f"[LOG] GPT сырой ответ: {response}")
         reply = response.choices[0].message.content if response.choices else "GPT не дал ответа."
         await update.message.reply_text(reply)
+
     except Exception as e:
-        logging.error(f"Ошибка при запросе к GPT: {e}")
-        await update.message.reply_text("⚠️ Макс немного притормозил. Проверь API-ключ или баланс, или напиши позже.")
+        print(f"[ERROR] GPT не сработал: {e}")
+        await update.message.reply_text("⚠️ Макс не может связаться с GPT. Ошибка запроса.")
 
 # Обработка голосовых сообщений
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
