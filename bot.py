@@ -1,6 +1,7 @@
 import logging
 import os
 import openai
+import tempfile
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
@@ -23,18 +24,23 @@ if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
 
 openai.api_key = OPENAI_API_KEY
 
-# Системный промт (из файла prompt.txt)
-with open("prompt.txt", "r", encoding="utf-8") as f:
-    SYSTEM_PROMPT = f.read()
+# Системный промт (из файла prompt.txt или по умолчанию)
+try:
+    with open("prompt.txt", "r", encoding="utf-8") as f:
+        SYSTEM_PROMPT = f.read()
+except FileNotFoundError:
+    SYSTEM_PROMPT = "Ты — Макс. Опытный диспетчер. Отвечай по-дружески, с заботой, по делу."
 
 # Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print("[LOG] /start получена")
     await update.message.reply_text("Здорова, я — Макс. Диспетчер и друг. Пиши или говори — разберёмся!")
 
 # Обработка текстовых сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text.strip()
-    
+    print(f"[LOG] Получено сообщение: {user_input}")
+
     if not user_input:
         await update.message.reply_text("Напиши, чем могу помочь?")
         return
@@ -47,6 +53,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 {"role": "user", "content": user_input},
             ]
         )
+        print(f"[LOG] GPT ответ: {response}")
         reply = response.choices[0].message.content if response.choices else "GPT не дал ответа."
         await update.message.reply_text(reply)
     except Exception as e:
@@ -78,6 +85,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 {"role": "user", "content": user_text},
             ]
         )
+        print(f"[LOG] GPT голосовой ответ: {response}")
         reply = response.choices[0].message.content if response.choices else "GPT не дал ответа."
         await update.message.reply_text(reply)
     except Exception as e:
