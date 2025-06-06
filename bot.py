@@ -99,7 +99,7 @@ response = await ask_gpt(messages)
 if response:
     assistant_reply = response.choices[0].message.content.strip()
     context_history.append({"role": "assistant", "content": assistant_reply})
-     await update.message.reply_text("⚠️ Макс не может ответить. Попробуй позже.")
+     await update.message.reply_text(assistant_reply)
 
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
