@@ -84,7 +84,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         messages.append({"role": "user", "content": user_input})
 
         response = openai.ChatCompletion.create(
-            model="GPT-4.1-мини",
+            model="gpt-4.1-mini",
             messages=messages
         )
         logging.info(f"[LOG] GPT сырой ответ: {response}")
@@ -121,7 +121,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         messages.append({"role": "user", "content": user_text})
 
         response = openai.ChatCompletion.create(
-            model="gpt-4o",
+            model="gpt-4.1-mini",
             messages=messages
         )
         logging.info(f"[LOG] GPT голосовой ответ: {response}")
