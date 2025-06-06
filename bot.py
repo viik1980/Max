@@ -28,18 +28,17 @@ except FileNotFoundError:
 # Загрузка знаний по ключевым словам
 def load_relevant_knowledge(user_input: str) -> str:
     keywords_map = {
-        "отдых": "rezhim_truda.md",
-        "пауз": "rezhim_truda.md",
-        "смен": "rezhim_truda.md",
-        "тахограф": "tahograf.md",
-        "карта": "tahograf.md",
-        "ECTP": "ectp.md",
+        "отдых": "Rezim_RTO.md",
+        "пауз": "Rezim_RTO.md",
+        "смен": "Rezim_RTO.md",
+        "тахограф": "4_tahograf_i_karty.md",
+        "карта": "4_tahograf_i_karty.md",
         "поезд": "ferry_routes.md",
         "паром": "ferry_routes.md",
-        "цмр": "cmr.md",
-        "документ": "cmr.md",
-        "катящееся шоссе": "katyaschee_shosse.md",
-        "железн": "katyaschee_shosse.md"
+        "цмр": "CMR.md",
+        "документ": "CMR.md",
+        "комфорт": "11_komfort_i_byt.md",
+        "питание": "12_pitanie_i_energiya.md"
     }
 
     selected_files = set()
