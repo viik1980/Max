@@ -29,7 +29,7 @@ try:
     with open("prompt.txt", "r", encoding="utf-8") as f:
         SYSTEM_PROMPT = f.read()
 except FileNotFoundError:
-    SYSTEM_PROMPT = "Ты — Макс. Опытный диспетчер. Отвечай по-дружески, с заботой, по делу."
+    SYSTEM_PROMPT = "Ты — Макс. Опытный диспетчер и навигатор по жизни в рейсе. Отвечай с заботой, по-дружески, с юмором, но по делу. Помогаешь водителям в пути, с режимами труда и отдыха, паромами, документами и восстановлением."
 
 # Загрузка всей базы знаний из папки knowledge
 def load_all_knowledge():
@@ -41,14 +41,13 @@ def load_all_knowledge():
     files = os.listdir(knowledge_dir)
     logging.info(f"Найдено файлов в knowledge: {files}")
     for filename in sorted(files):
-        # Для отладки убираем фильтр по расширению
         path = os.path.join(knowledge_dir, filename)
         if os.path.isfile(path):
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     content = f.read().strip()
                     if content:
-                        texts.append(f"=== {filename} ===\n{content}\n")
+                        texts.append(f"\n📘 {filename}\n{content}\n")
                     else:
                         logging.warning(f"Файл {filename} пустой.")
             except Exception as e:
@@ -57,14 +56,31 @@ def load_all_knowledge():
             logging.info(f"{filename} не файл, пропускаем.")
     return "\n".join(texts)
 
-
 KNOWLEDGE_BASE = load_all_knowledge()
 logging.info(f"Загружена база знаний, символов: {len(KNOWLEDGE_BASE)}")
+
+# Попробовать сначала gpt-4o, если ошибка — откатиться на 3.5-turbo
+async def ask_gpt(messages):
+    try:
+        return openai.ChatCompletion.create(
+            model="gpt-4o",
+            messages=messages
+        )
+    except Exception as e:
+        logging.warning(f"GPT-4o недоступен, пробуем gpt-3.5-turbo-1106. Ошибка: {e}")
+        try:
+            return openai.ChatCompletion.create(
+                model="gpt-3.5-turbo-1106",
+                messages=messages
+            )
+        except Exception as e2:
+            logging.error(f"GPT-3.5 тоже не сработал: {e2}")
+            return None
 
 # Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logging.info("[LOG] /start получена")
-    await update.message.reply_text("Здорова, я — Макс. Диспетчер и друг. Пиши или говори — разберёмся!")
+    await update.message.reply_text("Здорова, я — Макс. Диспетчер, друг и напарник в рейсе. Где ехать, где спать, когда жрать и не слететь с катушек — я рядом. Пиши!")
 
 # Обработка текстовых сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -75,25 +91,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Напиши, чем могу помочь?")
         return
 
-    try:
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-        ]
-        if KNOWLEDGE_BASE:
-            messages.append({"role": "system", "content": "📚 Вот база знаний для помощи:\n" + KNOWLEDGE_BASE})
-        messages.append({"role": "user", "content": user_input})
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+    ]
+    if KNOWLEDGE_BASE:
+        messages.append({"role": "system", "content": "📚 База знаний:\n" + KNOWLEDGE_BASE})
+    messages.append({"role": "user", "content": user_input})
 
-        response = openai.ChatCompletion.create(
-            model="gpt-4.1-mini",
-            messages=messages
-        )
-        logging.info(f"[LOG] GPT сырой ответ: {response}")
-        reply = response.choices[0].message.content if response.choices else "GPT не дал ответа."
+    response = await ask_gpt(messages)
+    if response:
+        reply = response.choices[0].message.content.strip()
         await update.message.reply_text(reply)
-
-    except Exception as e:
-        logging.error(f"[ERROR] GPT не сработал: {e}")
-        await update.message.reply_text("⚠️ Макс не может связаться с GPT. Ошибка запроса.")
+    else:
+        await update.message.reply_text("⚠️ Макс не может связаться с GPT. Попробуй позже.")
 
 # Обработка голосовых сообщений
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -117,16 +127,16 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             {"role": "system", "content": SYSTEM_PROMPT},
         ]
         if KNOWLEDGE_BASE:
-            messages.append({"role": "system", "content": "📚 Вот база знаний для помощи:\n" + KNOWLEDGE_BASE})
+            messages.append({"role": "system", "content": "📚 База знаний:\n" + KNOWLEDGE_BASE})
         messages.append({"role": "user", "content": user_text})
 
-        response = openai.ChatCompletion.create(
-            model="gpt-4.1-mini",
-            messages=messages
-        )
-        logging.info(f"[LOG] GPT голосовой ответ: {response}")
-        reply = response.choices[0].message.content if response.choices else "GPT не дал ответа."
-        await update.message.reply_text(reply)
+        response = await ask_gpt(messages)
+        if response:
+            reply = response.choices[0].message.content.strip()
+            await update.message.reply_text(reply)
+        else:
+            await update.message.reply_text("⚠️ Макс не может связаться с GPT. Попробуй позже.")
+
     except Exception as e:
         logging.error(f"Ошибка при обработке голосового сообщения: {e}")
         await update.message.reply_text("⚠️ Макс не смог обработать голос. Проверь формат или попробуй позже.")
