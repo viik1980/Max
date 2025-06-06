@@ -6,6 +6,10 @@ import tempfile
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
+# Память между сообщениями (примитивная, можно позже заменить на Redis или файл)
+context_history = []
+MAX_TURNS = 4  # сколько ходов помнить (user + assistant)
+
 
 load_dotenv()
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -76,18 +80,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Чем могу помочь?")
         return
 
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    kb_snippet = load_relevant_knowledge(user_input)
-    if kb_snippet:
-        messages.append({"role": "system", "content": "📚 База знаний:\n" + kb_snippet})
-    messages.append({"role": "user", "content": user_input})
+    # Добавляем в историю
+context_history.append({"role": "user", "content": user_input})
 
-    response = await ask_gpt(messages)
-    if response:
-        reply = response.choices[0].message.content.strip()
-        await update.message.reply_text(reply)
-    else:
-        await update.message.reply_text("⚠️ Макс не может ответить. Попробуй позже.")
+# Формируем полное сообщение с историей
+messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+kb_snippet = load_relevant_knowledge(user_input)
+if kb_snippet:
+    messages.append({"role": "system", "content": "📚 База знаний:\n" + kb_snippet})
+
+# Вставляем последние реплики из памяти
+messages += context_history[-MAX_TURNS:]
+
+# GPT отвечает
+response = await ask_gpt(messages)
+
+# Сохраняем ответ в память
+if response:
+    assistant_reply = response.choices[0].message.content.strip()
+    context_history.append({"role": "assistant", "content": assistant_reply})
+     await update.message.reply_text("⚠️ Макс не может ответить. Попробуй позже.")
 
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
