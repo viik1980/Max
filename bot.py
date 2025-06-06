@@ -84,7 +84,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         messages.append({"role": "user", "content": user_input})
 
         response = openai.ChatCompletion.create(
-            model="gpt-4o",
+            model="GPT-4.1-мини",
             messages=messages
         )
         logging.info(f"[LOG] GPT сырой ответ: {response}")
