@@ -28,7 +28,7 @@ def load_relevant_knowledge(user_input: str) -> str:
         "тахограф": "tahograf.md",
         "карта": "tahograf.md",
         "ECTP": "ectp.md",
-        "фери": "ferry_routes.md",
+        "поезд": "ferry_routes.md",
         "паром": "ferry_routes.md",
         "цмр": "cmr.md",
         "документ": "cmr.md",
