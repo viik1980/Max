@@ -49,8 +49,11 @@ def load_relevant_knowledge(user_input: str) -> str:
             with open(path, "r", encoding="utf-8") as f:
                 content = f.read().strip()
                 if content:
-                    texts.append(f"📘 {filename}:
-{content}\n")
+                    texts.append(
+    f"📘 {filename}:\n"
+    f"{content}\n"
+)
+
     return "\n".join(texts) or ""
 
 async def ask_gpt(messages):
