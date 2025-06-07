@@ -1,9 +1,9 @@
 import logging
 import os
-import openai
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
+import requests
 
 # Память между сообщениями (примитивная, можно позже заменить на Redis или файл)
 context_history = []
@@ -12,11 +12,16 @@ MAX_TURNS = 6  # сколько ходов помнить (user + assistant)
 # Загрузка переменных окружения
 load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-openai.api_key = OPENAI_API_KEY
+QWEN_API_KEY = os.getenv("QWEN_API_KEY")
 
 # Настройка логгирования
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+
+# URL для обращения к Qwen API
+QWEN_API_URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation" 
 
 # Загрузка системного промта
 try:
@@ -58,17 +63,35 @@ def load_relevant_knowledge(user_input: str) -> str:
 
     return "\n".join(texts) or ""
 
-# GPT-запрос
-async def ask_gpt(messages):
+# Qwen-запрос
+async def ask_qwen(prompt):
+    headers = {
+        "Authorization": f"Bearer {QWEN_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "model": "qwen3",
+        "input": {
+            "prompt": prompt
+        },
+        "parameters": {
+            "max_tokens": 500,
+            "temperature": 0.7
+        }
+    }
+
     try:
-        return openai.ChatCompletion.create(model="gpt-4o", messages=messages)
-    except Exception as e:
-        logging.warning(f"GPT-4o недоступен, fallback: {e}")
-        try:
-            return openai.ChatCompletion.create(model="gpt-3.5-turbo-1106", messages=messages)
-        except Exception as e2:
-            logging.error(f"GPT-3.5 тоже не сработал: {e2}")
+        response = requests.post(QWEN_API_URL, json=data, headers=headers)
+        result = response.json()
+
+        if response.status_code == 200 and 'output' in result and 'text' in result['output']:
+            return result['output']['text'].strip()
+        else:
+            logging.error(f"Ошибка при запросе к Qwen: {result}")
             return None
+    except Exception as e:
+        logging.error(f"Сервер не отвечает: {e}")
+        return None
 
 # Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -84,7 +107,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Добавляем реплику пользователя в историю
     context_history.append({"role": "user", "content": user_input})
 
-    # Формируем сообщение для GPT
+    # Формируем сообщение для Qwen
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     kb_snippet = load_relevant_knowledge(user_input)
     if kb_snippet:
@@ -93,16 +116,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Добавляем последние ходы
     messages += context_history[-MAX_TURNS:]
 
-    # Получаем ответ от GPT
-    response = await ask_gpt(messages)
+    # Формируем текстовый промт для Qwen
+    qwen_prompt = "\n\n".join([f"{msg['role']}: {msg['content']}" for msg in messages])
+
+    # Получаем ответ от Qwen
+    reply = await ask_qwen(qwen_prompt)
 
     # Сохраняем и отправляем ответ
-    if response:
-        assistant_reply = response.choices[0].message.content.strip()
-        context_history.append({"role": "assistant", "content": assistant_reply})
-        await update.message.reply_text(assistant_reply)
+    if reply:
+        context_history.append({"role": "assistant", "content": reply})
+        await update.message.reply_text(reply)
     else:
-        await update.message.reply_text("❌ Ошибка при запросе к GPT. Попробуй позже.")
+        await update.message.reply_text("❌ Ошибка при запросе к Qwen. Проверь токен или попробуй позже.")
 
 # Запуск бота
 if __name__ == '__main__':
