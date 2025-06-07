@@ -26,9 +26,9 @@ except FileNotFoundError:
 # Загрузка знаний по ключевым словам
 def load_relevant_knowledge(user_input: str) -> str:
     keywords_map = {
-        "отдых": "Rezim_RTO.md",
-        "пауз": "Rezim_RTO.md",
-        "смен": "Rezim_RTO.md",
+        "отдых": "3_rezhim_truda_otdykha.md",
+        "пауз": "3_rezhim_truda_otdykha.md",
+        "смен": "3_rezhim_truda_otdykha.md",
         "тахограф": "4_tahograf_i_karty.md",
         "карта": "4_tahograf_i_karty.md",
         "поезд": "ferry_routes.md",
@@ -77,7 +77,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text.strip()
     
     if not user_input:
-        await update.message.reply_text("Напиши, чем могу помочь?")
+        await update.message.reply_text("Чем могу помочь?")
         return
 
     reply = get_qwen_response(user_input)
@@ -88,4 +88,4 @@ if __name__ == '__main__':
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.run_polling()
+    app.run_polling(drop_pending_updates=True)
