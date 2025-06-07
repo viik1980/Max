@@ -1,27 +1,20 @@
-import logging
 import os
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
 import requests
 
-# Память между сообщениями (примитивная, можно позже заменить на Redis или файл)
-context_history = []
-MAX_TURNS = 6  # сколько ходов помнить (user + assistant)
-
-# Загрузка переменных окружения
 load_dotenv()
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-QWEN_API_KEY = os.getenv("QWEN_API_KEY")
 
-# Настройка логгирования
+# Логирование
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 
-# URL для обращения к Qwen API через OpenRouter
-QWEN_API_URL = "https://api.openrouter.ai/v1/chat/completions" 
+# Получение переменных окружения
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+AI_API_URL = "http://localhost:5000/chat"  # или URL к развернутому Flask-серверу
 
 # Загрузка системного промта
 try:
@@ -63,70 +56,36 @@ def load_relevant_knowledge(user_input: str) -> str:
 
     return "\n".join(texts) or ""
 
-# Qwen-запрос
-async def ask_qwen(prompt):
-    headers = {
-        "Authorization": f"Bearer {QWEN_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    data = {
-        "model": "qwen/qwen3",
-        "messages": [
-            {"role": "system", "content": prompt}
-        ],
-        "temperature": 0.7,
-        "max_tokens": 500
-    }
+# Функция для получения ответа от Qwen
+def get_qwen_response(query):
+    kb_snippet = load_relevant_knowledge(query)
+    full_prompt = SYSTEM_PROMPT + "\n\nПользователь: " + query + "\n\n📚 База знаний:\n" + kb_snippet
 
     try:
-        response = requests.post(QWEN_API_URL, json=data, headers=headers)
-        result = response.json()
-
-        if response.status_code == 200 and 'choices' in result and len(result['choices']) > 0:
-            return result['choices'][0]['message']['content'].strip()
-        else:
-            logging.error(f"Ошибка при запросе к Qwen: {result}")
-            return None
+        response = requests.post(AI_API_URL, json={"query": full_prompt})
+        return response.json().get("response", "Ошибка получения ответа.")
     except Exception as e:
-        logging.error(f"Сервер не отвечает: {e}")
-        return None
+        logging.error(f"Ошибка при вызове Qwen: {e}")
+        return "⚠️ Не могу получить ответ."
 
 # Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Здорова, я — Макс. Диспетчер, друг и напарник. Пиши — помогу.")
 
-# Обработка сообщений
+# Обработка текстовых сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text.strip()
+    
     if not user_input:
-        await update.message.reply_text("Чем могу помочь?")
+        await update.message.reply_text("Напиши, чем могу помочь?")
         return
 
-    # Добавляем реплику пользователя в историю
-    context_history.append({"role": "user", "content": user_input})
-
-    # Формируем сообщение для Qwen
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    kb_snippet = load_relevant_knowledge(user_input)
-    if kb_snippet:
-        messages.append({"role": "system", "content": "📚 База знаний:\n" + kb_snippet})
-
-    # Добавляем последние ходы
-    messages += [{"role": msg["role"], "content": msg["content"]} for msg in context_history[-MAX_TURNS:]]
-
-    # Получаем ответ от Qwen
-    reply = await ask_qwen("\n\n".join([f"{msg['role']}: {msg['content']}" for msg in messages]))
-
-    # Сохраняем и отправляем ответ
-    if reply:
-        context_history.append({"role": "assistant", "content": reply})
-        await update.message.reply_text(reply)
-    else:
-        await update.message.reply_text("❌ Ошибка при запросе к Qwen. Проверь токен или попробуй позже.")
+    reply = get_qwen_response(user_input)
+    await update.message.reply_text(reply)
 
 # Запуск бота
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.run_polling(drop_pending_updates=True)
+    app.run_polling()
