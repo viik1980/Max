@@ -20,8 +20,8 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# URL для обращения к Qwen API
-
+# URL для обращения к Qwen API через OpenRouter
+QWEN_API_URL = "https://api.openrouter.ai/v1/chat/completions" 
 
 # Загрузка системного промта
 try:
@@ -70,22 +70,20 @@ async def ask_qwen(prompt):
         "Content-Type": "application/json"
     }
     data = {
-        "model": "qwen3",
-        "input": {
-            "prompt": prompt
-        },
-        "parameters": {
-            "max_tokens": 500,
-            "temperature": 0.7
-        }
+        "model": "qwen/qwen3",
+        "messages": [
+            {"role": "system", "content": prompt}
+        ],
+        "temperature": 0.7,
+        "max_tokens": 500
     }
 
     try:
         response = requests.post(QWEN_API_URL, json=data, headers=headers)
         result = response.json()
 
-        if response.status_code == 200 and 'output' in result and 'text' in result['output']:
-            return result['output']['text'].strip()
+        if response.status_code == 200 and 'choices' in result and len(result['choices']) > 0:
+            return result['choices'][0]['message']['content'].strip()
         else:
             logging.error(f"Ошибка при запросе к Qwen: {result}")
             return None
@@ -114,13 +112,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         messages.append({"role": "system", "content": "📚 База знаний:\n" + kb_snippet})
 
     # Добавляем последние ходы
-    messages += context_history[-MAX_TURNS:]
-
-    # Формируем текстовый промт для Qwen
-    qwen_prompt = "\n\n".join([f"{msg['role']}: {msg['content']}" for msg in messages])
+    messages += [{"role": msg["role"], "content": msg["content"]} for msg in context_history[-MAX_TURNS:]]
 
     # Получаем ответ от Qwen
-    reply = await ask_qwen(qwen_prompt)
+    reply = await ask_qwen("\n\n".join([f"{msg['role']}: {msg['content']}" for msg in messages]))
 
     # Сохраняем и отправляем ответ
     if reply:
