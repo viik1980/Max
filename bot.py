@@ -21,7 +21,7 @@ logging.basicConfig(
 )
 
 # URL для обращения к Qwen API
-QWEN_API_URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation" 
+
 
 # Загрузка системного промта
 try:
