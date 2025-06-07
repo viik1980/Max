@@ -5,16 +5,20 @@ import os
 
 app = Flask(__name__)
 
-# Путь к модели Qwen
-MODEL_NAME = "Qwen/Qwen3"
+# Путь к модели
+MODEL_NAME = "Qwen/Qwen2"
+
+# Инициализация модели и токенизатора
 tokenizer = None
 model = None
 
-# Инициализация модели
 def load_model():
     global tokenizer, model
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-    model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to("cuda" if torch.cuda.is_available() else "cpu")
+    model = AutoModelForCausalLM.from_pretrained(
+        MODEL_NAME,
+        device_map="auto"
+    )
 
 @app.route("/chat", methods=["POST"])
 def chat():
@@ -24,11 +28,11 @@ def chat():
     if not query:
         return jsonify({"error": "Пустой запрос"}), 400
 
-    # Загрузка модели при первом запуске
+    # Инициализация модели при первом вызове
     if tokenizer is None or model is None:
         load_model()
 
-    # Формируем входной промт
+    # Чтение промта
     try:
         with open("prompt.txt", "r", encoding="utf-8") as f:
             system_prompt = f.read()
