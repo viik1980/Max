@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 # Память между сообщениями (примитивная, можно позже заменить на Redis или файл)
 context_history = []
-MAX_TURNS = 4  # сколько ходов помнить (user + assistant)
+MAX_TURNS = 6  # сколько ходов помнить (user + assistant)
 
 # Загрузка переменных окружения
 load_dotenv()
