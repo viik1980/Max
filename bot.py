@@ -1,11 +1,13 @@
 import logging
 import os
+from dotenv import load_dotenv
 import openai
+from langdetect import detect
+from deep_translator import GoogleTranslator
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-from dotenv import load_dotenv
 
-# Память между сообщениями (примитивная, можно позже заменить на Redis или файл)
+# Память между сообщениями (примитивная)
 context_history = []
 MAX_TURNS = 6  # сколько ходов помнить (user + assistant)
 
@@ -16,7 +18,9 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 openai.api_key = OPENAI_API_KEY
 
 # Настройка логгирования
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
+)
 
 # Загрузка системного промта
 try:
@@ -81,16 +85,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Чем могу помочь?")
         return
 
-    # Добавляем реплику пользователя в историю
-    context_history.append({"role": "user", "content": user_input})
+    # Определяем язык пользователя
+    try:
+        user_lang = detect(user_input)
+    except Exception as e:
+        logging.error(f"Не удалось определить язык: {e}")
+        user_lang = 'ru'
+
+    # Переводим на русский, если это не русский
+    if user_lang != 'ru':
+        try:
+            translated_input = GoogleTranslator(source='auto', target='ru').translate(user_input)
+        except Exception as e:
+            logging.error(f"Ошибка перевода запроса: {e}")
+            translated_input = user_input
+    else:
+        translated_input = user_input
+
+    context_history.append({"role": "user", "content": translated_input})
 
     # Формируем сообщение для GPT
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    kb_snippet = load_relevant_knowledge(user_input)
+    kb_snippet = load_relevant_knowledge(translated_input)
     if kb_snippet:
         messages.append({"role": "system", "content": "📚 База знаний:\n" + kb_snippet})
 
-    # Добавляем последние ходы
     messages += context_history[-MAX_TURNS:]
 
     # Получаем ответ от GPT
@@ -98,8 +117,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Сохраняем и отправляем ответ
     if response:
-        assistant_reply = response.choices[0].message.content.strip()
-        context_history.append({"role": "assistant", "content": assistant_reply})
+        assistant_reply_ru = response.choices[0].message.content.strip()
+        context_history.append({"role": "assistant", "content": assistant_reply_ru})
+
+        # Переводим обратно, если нужно
+        if user_lang != 'ru':
+            try:
+                assistant_reply = GoogleTranslator(source='ru', target=user_lang).translate(assistant_reply_ru)
+            except Exception as e:
+                logging.error(f"Ошибка перевода ответа: {e}")
+                assistant_reply = assistant_reply_ru
+        else:
+            assistant_reply = assistant_reply_ru
+
         await update.message.reply_text(assistant_reply)
     else:
         await update.message.reply_text("❌ Ошибка при запросе к GPT. Попробуй позже.")
