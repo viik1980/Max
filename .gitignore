@@ -1,6 +1,0 @@
-.env
-__pycache__
-*.log
-venv/
-*.sqlite3
-*.md
