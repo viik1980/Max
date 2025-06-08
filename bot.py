@@ -2,8 +2,6 @@ import logging
 import os
 from dotenv import load_dotenv
 import openai
-from langdetect import detect
-from deep_translator import GoogleTranslator
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
