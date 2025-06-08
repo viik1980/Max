@@ -5,27 +5,27 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
 
-# Память между сообщениями (примитивная, можно позже заменить на Redis или файл)
+# Простейшая память между сообщениями
 context_history = []
-MAX_TURNS = 6  # сколько ходов помнить (user + assistant)
+MAX_TURNS = 6
 
-# Загрузка переменных окружения
+# Загрузка .env
 load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 openai.api_key = OPENAI_API_KEY
 
-# Настройка логгирования
+# Логирование
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# Загрузка системного промта
+# Загрузка промта
 try:
     with open("prompt.txt", "r", encoding="utf-8") as f:
         SYSTEM_PROMPT = f.read()
 except FileNotFoundError:
     SYSTEM_PROMPT = "Ты — Макс. Диспетчер, помощник и навигатор по жизни в рейсе."
 
-# Загрузка знаний по ключевым словам
+# Ключевые слова -> знания
 def load_relevant_knowledge(user_input: str) -> str:
     keywords_map = {
         "отдых": "Rezim_RTO.md",
@@ -81,22 +81,37 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Чем могу помочь?")
         return
 
-    # Добавляем реплику пользователя в историю
+    lowered = user_input.lower()
+
+    # Если пользователь просит картинку
+    if any(keyword in lowered for keyword in ["нарисуй", "покажи", "сгенерируй", "изображение", "картинку", "как выглядит", "картина"]):
+        try:
+            image_response = openai.Image.create(
+                prompt=user_input,
+                n=1,
+                size="512x512"
+            )
+            image_url = image_response['data'][0]['url']
+            await update.message.reply_photo(photo=image_url, caption="🖼️ Вот как это может выглядеть:")
+            return
+        except Exception as e:
+            logging.error(f"Ошибка генерации изображения: {e}")
+            await update.message.reply_text("❌ Не удалось сгенерировать изображение. Попробуй позже.")
+            return
+
+    # Добавляем сообщение пользователя
     context_history.append({"role": "user", "content": user_input})
 
-    # Формируем сообщение для GPT
+    # Готовим сообщение для GPT
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     kb_snippet = load_relevant_knowledge(user_input)
     if kb_snippet:
         messages.append({"role": "system", "content": "📚 База знаний:\n" + kb_snippet})
-
-    # Добавляем последние ходы
     messages += context_history[-MAX_TURNS:]
 
-    # Получаем ответ от GPT
+    # Получаем ответ
     response = await ask_gpt(messages)
 
-    # Сохраняем и отправляем ответ
     if response:
         assistant_reply = response.choices[0].message.content.strip()
         context_history.append({"role": "assistant", "content": assistant_reply})
@@ -104,7 +119,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❌ Ошибка при запросе к GPT. Попробуй позже.")
 
-# Запуск бота
+# Запуск
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
