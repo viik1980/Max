@@ -1,8 +1,4 @@
-python-telegram-bot==20.6
-flask==3.0.0
+python-telegram-bot>=20.0
+openai==0.28.1
 python-dotenv==1.0.0
-requests==2.31.0
-transformers==4.38.2
-torch==2.3.1
-accelerate==0.27.2
-safetensors==0.4.3
+requests
