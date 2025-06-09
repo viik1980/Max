@@ -1,0 +1,6 @@
+{
+  "max_driving_hours": 9,
+  "pause_after_hours": 4.5,
+  "pause_duration": 0.75,
+  "daily_rest": 11
+}
