@@ -76,6 +76,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Здорова, я — Макс. Диспетчер, друг и навигатор по рейсу. Пиши — вместе разберёмся!")
 
 # Обработка сообщений
+# Обработка сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text.strip()
     if not user_input:
@@ -105,7 +106,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_lines.append(f"🕒 {e['start'].strftime('%d.%m %H:%M')} → {e['end'].strftime('%H:%M')} | {e['action']}")
             reply_lines.append(f"\n📏 Всего: {total_km} км")
 
-            await update.message.reply_text("\n".join(reply_lines))
+            reply_text = "\n".join(reply_lines)
+            logging.info(f"Отправляется сообщение: {reply_text}")
+            await update.message.reply_text(reply_text)
             return
         except Exception as e:
             logging.error(f"Ошибка расчёта маршрута: {e}")
@@ -130,6 +133,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(reply)
     else:
         await update.message.reply_text("❌ Макс не смог получить ответ. Попробуй позже.")
+``
 # Запуск
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
