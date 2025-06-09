@@ -76,6 +76,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Здорова, я — Макс. Диспетчер, друг и навигатор по рейсу. Пиши — вместе разберёмся!")
 
 # Обработка сообщений
+# Обработка сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text.strip()
     if not user_input:
@@ -85,7 +86,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lowered = user_input.lower()
 
     # Проверка на расчёт маршрута
-    if any(word in lowered for word in ["расчитай", "маршрут", "загрузка", "выгрузка", "км", "время"]):
+    keywords = ["расчитай", "маршрут", "загрузка", "выгрузка", "км", "время"]
+    if any(keyword in lowered for keyword in keywords):
+        logging.info(f"Ключевые слова найдены: {keywords}")
         try:
             segments = [
                 {"type": "drive", "distance_km": 240},
@@ -108,6 +111,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logging.error(f"Ошибка расчёта маршрута: {e}")
             await update.message.reply_text("❌ Ошибка при расчёте маршрута.")
             return
+    else:
+        logging.info(f"Ключевые слова не найдены: {keywords}")
 
     # GPT-ответ
     context_history.append({"role": "user", "content": user_input})
