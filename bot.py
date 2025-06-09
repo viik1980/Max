@@ -4,8 +4,8 @@ import openai
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
-from logic.route_calc import calculate_eta
 from datetime import datetime
+from logic.route_calc import calculate_eta
 
 
 # Простейшая память между сообщениями
