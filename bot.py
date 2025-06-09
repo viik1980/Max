@@ -7,8 +7,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 from logic.route_calc import calculate_eta
 
-
-# Простейшая память между сообщениями
+# Простейшая память
 context_history = []
 MAX_TURNS = 6
 
@@ -21,14 +20,14 @@ openai.api_key = OPENAI_API_KEY
 # Логирование
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# Загрузка промта
+# Промт Макса
 try:
     with open("prompt.txt", "r", encoding="utf-8") as f:
         SYSTEM_PROMPT = f.read()
 except FileNotFoundError:
-    SYSTEM_PROMPT = "Ты — Макс. Диспетчер, помощник и навигатор по жизни в рейсе."
+    SYSTEM_PROMPT = "Ты — Макс. Диспетчер, помощник и напарник дальнобойщика. Всё по-человечески."
 
-# Ключевые слова -> знания
+# База знаний по ключевым словам
 def load_relevant_knowledge(user_input: str) -> str:
     keywords_map = {
         "отдых": "Rezim_RTO.md",
@@ -58,10 +57,9 @@ def load_relevant_knowledge(user_input: str) -> str:
                 content = f.read().strip()
                 if content:
                     texts.append(f"📘 {filename}:\n{content}\n")
-
     return "\n".join(texts) or ""
 
-# GPT-запрос
+# Обращение к GPT
 async def ask_gpt(messages):
     try:
         return openai.ChatCompletion.create(model="gpt-4o", messages=messages)
@@ -75,7 +73,7 @@ async def ask_gpt(messages):
 
 # Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Здорова, я — Макс. Диспетчер, друг и напарник. Пиши — помогу.")
+    await update.message.reply_text("Здорова, я — Макс. Диспетчер, друг и навигатор по рейсу. Пиши — вместе разберёмся!")
 
 # Обработка сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -86,41 +84,47 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     lowered = user_input.lower()
 
-    # Если пользователь просит картинку
-    if any(keyword in lowered for keyword in ["нарисуй", "покажи", "сгенерируй", "изображение", "картинку", "как выглядит", "картина"]):
+    # Проверка на расчёт маршрута
+    if any(word in lowered for word in ["расчитай", "маршрут", "загрузка", "выгрузка", "км", "время"]):
         try:
-            image_response = openai.Image.create(
-                prompt=user_input,
-                n=1,
-                size="512x512"
-            )
-            image_url = image_response['data'][0]['url']
-            await update.message.reply_photo(photo=image_url, caption="🖼️ Вот как это может выглядеть:")
+            segments = [
+                {"type": "drive", "distance_km": 240},
+                {"type": "wait", "duration_min": 60, "note": "Загрузка"},
+                {"type": "drive", "distance_km": 600},
+                {"type": "pause", "duration_min": 30, "note": "Заправка"},
+                {"type": "drive", "distance_km": 1050}
+            ]
+            start_time = datetime.strptime("2025-06-06 06:00", "%Y-%m-%d %H:%M")
+            result, total_km = calculate_eta(start_time, segments)
+
+            reply_lines = ["🛣️ График маршрута:\n"]
+            for e in result:
+                reply_lines.append(f"🕒 {e['start'].strftime('%d.%m %H:%M')} → {e['end'].strftime('%H:%M')} | {e['action']}")
+            reply_lines.append(f"\n📏 Всего: {total_km} км")
+
+            await update.message.reply_text("\n".join(reply_lines))
             return
         except Exception as e:
-            logging.error(f"Ошибка генерации изображения: {e}")
-            await update.message.reply_text("❌ Не удалось сгенерировать изображение. Попробуй позже.")
+            logging.error(f"Ошибка расчёта маршрута: {e}")
+            await update.message.reply_text("❌ Ошибка при расчёте маршрута.")
             return
 
-    # Добавляем сообщение пользователя
+    # GPT-ответ
     context_history.append({"role": "user", "content": user_input})
-
-    # Готовим сообщение для GPT
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     kb_snippet = load_relevant_knowledge(user_input)
     if kb_snippet:
         messages.append({"role": "system", "content": "📚 База знаний:\n" + kb_snippet})
     messages += context_history[-MAX_TURNS:]
 
-    # Получаем ответ
     response = await ask_gpt(messages)
 
     if response:
-        assistant_reply = response.choices[0].message.content.strip()
-        context_history.append({"role": "assistant", "content": assistant_reply})
-        await update.message.reply_text(assistant_reply)
+        reply = response.choices[0].message.content.strip()
+        context_history.append({"role": "assistant", "content": reply})
+        await update.message.reply_text(reply)
     else:
-        await update.message.reply_text("❌ Ошибка при запросе к GPT. Попробуй позже.")
+        await update.message.reply_text("❌ Макс не смог получить ответ. Попробуй позже.")
 
 # Запуск
 if __name__ == '__main__':
