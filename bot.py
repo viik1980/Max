@@ -76,7 +76,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Здорова, я — Макс. Диспетчер, друг и навигатор по рейсу. Пиши — вместе разберёмся!")
 
 # Обработка сообщений
-# Обработка сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text.strip()
     if not user_input:
@@ -84,6 +83,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     lowered = user_input.lower()
+    logging.info(f"Получено сообщение: {lowered}")
 
     # Проверка на расчёт маршрута
     keywords = ["расчитай", "маршрут", "загрузка", "выгрузка", "км", "время"]
@@ -130,7 +130,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(reply)
     else:
         await update.message.reply_text("❌ Макс не смог получить ответ. Попробуй позже.")
-
 # Запуск
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
