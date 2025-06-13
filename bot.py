@@ -1,6 +1,7 @@
 import logging
 import os
 import openai
+import tempfile
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
@@ -63,7 +64,7 @@ async def ask_gpt(messages):
     try:
         return openai.ChatCompletion.create(model="gpt-4.5-preview", messages=messages)
     except Exception as e:
-        logging.warning(f"gpt-4.5-preview недоступен, fallback: {e}")
+        logging.warning(f"GPT-4.5-preview недоступен, fallback: {e}")
         try:
             return openai.ChatCompletion.create(model="gpt-3.5-turbo-1106", messages=messages)
         except Exception as e2:
@@ -72,9 +73,9 @@ async def ask_gpt(messages):
 
 # Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Здорова, я — Макс. Диспетчер, друг и напарник. Пиши — помогу.")
+    await update.message.reply_text("Здорова, я — Макс. Диспетчер, друг и напарник. Пиши или говори — помогу!")
 
-# Обработка сообщений
+# Обработка текстовых сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text.strip()
     if not user_input:
@@ -99,17 +100,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Не удалось сгенерировать изображение. Попробуй позже.")
             return
 
-    # Добавляем сообщение пользователя
     context_history.append({"role": "user", "content": user_input})
-
-    # Готовим сообщение для GPT
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     kb_snippet = load_relevant_knowledge(user_input)
     if kb_snippet:
         messages.append({"role": "system", "content": "📚 База знаний:\n" + kb_snippet})
     messages += context_history[-MAX_TURNS:]
 
-    # Получаем ответ
     response = await ask_gpt(messages)
 
     if response:
@@ -119,9 +116,48 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❌ Ошибка при запросе к GPT. Попробуй позже.")
 
+# Обработка голосовых сообщений
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        file = await update.message.voice.get_file()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".oga") as f:
+            await file.download_to_drive(f.name)
+            audio_path = f.name
+
+        with open(audio_path, "rb") as audio_file:
+            transcript = openai.Audio.transcribe("whisper-1", audio_file)
+            user_text = transcript.get("text", "")
+
+        if not user_text:
+            await update.message.reply_text("🎧 Не смог разобрать голос. Попробуй снова.")
+            return
+
+        await update.message.reply_text(f"Ты сказал: {user_text}")
+
+        context_history.append({"role": "user", "content": user_text})
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        kb_snippet = load_relevant_knowledge(user_text)
+        if kb_snippet:
+            messages.append({"role": "system", "content": "📚 База знаний:\n" + kb_snippet})
+        messages += context_history[-MAX_TURNS:]
+
+        response = await ask_gpt(messages)
+
+        if response:
+            assistant_reply = response.choices[0].message.content.strip()
+            context_history.append({"role": "assistant", "content": assistant_reply})
+            await update.message.reply_text(assistant_reply)
+        else:
+            await update.message.reply_text("❌ Ошибка при запросе к GPT. Попробуй позже.")
+
+    except Exception as e:
+        logging.error(f"[ERROR] Голосовая ошибка: {e}")
+        await update.message.reply_text("⚠️ Не смог обработать голос. Возможно, проблема с форматом.")
+
 # Запуск
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.run_polling()
