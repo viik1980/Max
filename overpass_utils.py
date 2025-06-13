@@ -24,20 +24,20 @@ async def query_overpass(lat, lon, radius=10000):
                 if resp.status == 200:
                     return await resp.json()
                 else:
-                    logging.error(f"Overpass вернул статус {resp.status}")
+                    logging.error(f"Overpass статус {resp.status}")
                     return None
     except Exception as e:
         logging.error(f"Ошибка Overpass: {e}")
         return None
 
-
 def parse_places(data):
     places = []
     for element in data.get("elements", []):
-        name = element.get("tags", {}).get("name", "Без названия")
-        type_ = element.get("tags", {}).get("shop") or element.get("tags", {}).get("amenity")
+        tags = element.get("tags", {})
+        name = tags.get("name", "Без названия")
+        type_ = tags.get("shop") or tags.get("amenity")
         lat = element.get("lat")
         lon = element.get("lon")
-        if type_:
+        if type_ and lat and lon:
             places.append(f"📍 {type_.capitalize()}: {name}\n➡️ Координаты: {lat:.4f}, {lon:.4f}")
-    return places[:10]  # максимум 10 мест
+    return places[:10]
