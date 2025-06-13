@@ -52,7 +52,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def find_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(
-            "Напиши, что искать: душ, магазин или парковку. Пример: `/найди душ`",
+            "Напиши, что искать: душ, магазин или парковку. Пример: `/find душ`",
             parse_mode="Markdown"
         )
         return
