@@ -154,10 +154,31 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"[ERROR] Голосовая ошибка: {e}")
         await update.message.reply_text("⚠️ Не смог обработать голос. Возможно, проблема с форматом.")
 
-# Запуск
+# ... (остальной код без изменений выше)
+
+from overpass_utils import query_overpass, parse_places
+
+# Геолокация
+async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lat = update.message.location.latitude
+    lon = update.message.location.longitude
+    await update.message.reply_text("📍 Получил координаты. Ищу рядом магазины, парковки и аптеки...")
+
+    data = await query_overpass(lat, lon)
+    if data:
+        places = parse_places(data)
+        if places:
+            await update.message.reply_text("\n\n".join(places))
+        else:
+            await update.message.reply_text("❗ Ничего не нашёл поблизости.")
+    else:
+        await update.message.reply_text("⚠️ Не удалось получить данные от Overpass API.")
+
+# Запуск (обновлён)
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    app.add_handler(MessageHandler(filters.LOCATION, handle_location))  # <-- добавлен
     app.run_polling()
