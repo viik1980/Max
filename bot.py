@@ -63,7 +63,7 @@ async def ask_gpt(messages):
     try:
         return openai.ChatCompletion.create(model="gpt-4.5-preview", messages=messages)
     except Exception as e:
-        logging.warning(f"GPT-4o недоступен, fallback: {e}")
+        logging.warning(f"gpt-4.5-preview недоступен, fallback: {e}")
         try:
             return openai.ChatCompletion.create(model="gpt-3.5-turbo-1106", messages=messages)
         except Exception as e2:
