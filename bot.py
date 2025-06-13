@@ -81,14 +81,11 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Не нашёл {label} поблизости.")
         return
 
-    text = f"🔍 Найдено {label} поблизости:
-
-"
+    text = f"🔍 Найдено {label} поблизости:\n\n"
     for i, place in enumerate(results[:5], 1):
         name = place.get("tags", {}).get("name", "Без названия")
         dist = round(place["dist"], 1)
-        text += f"{i}. {label} *{name}* — ~{dist} м
-"
+        text += f"{i}. {label} *{name}* — ~{dist} м\n"
 
     await update.message.reply_text(text, parse_mode="Markdown")
 
