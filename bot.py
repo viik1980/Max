@@ -6,7 +6,7 @@ import tempfile
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
-from utils.overpass_utils import find_nearby_places
+from overpass_utils import find_nearby_places
 
 # Простейшая память
 context_history = []
