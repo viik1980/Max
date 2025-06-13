@@ -120,10 +120,12 @@ async def main():
     # Удалить вебхук перед polling (важно!)
     await app.bot.delete_webhook(drop_pending_updates=True)
     
-    app.add_handler(CommandHandler(["start"], start))
-    app.add_handler(CommandHandler(["find", "найди"], find_command))
-    app.add_handler(MessageHandler(filters.LOCATION, handle_location))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    # Добавление хендлеров
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("find", find_command))
+app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/найди\b"), find_command))
+app.add_handler(MessageHandler(filters.LOCATION, handle_location))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     await app.run_polling()
 
