@@ -2,12 +2,13 @@ import logging
 import os
 import openai
 import tempfile
+import asyncio
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
 from overpass_utils import find_nearby_places
 
-# Простейшая память
+# Простая история сообщений
 context_history = []
 MAX_TURNS = 6
 
@@ -20,7 +21,7 @@ openai.api_key = OPENAI_API_KEY
 # Логирование
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# Промт
+# Промт из файла или по умолчанию
 try:
     with open("prompt.txt", "r", encoding="utf-8") as f:
         SYSTEM_PROMPT = f.read()
@@ -44,16 +45,14 @@ async def ask_gpt(messages):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Здорова, я — Макс. Диспетчер, друг и напарник. Пиши или говори — помогу!\n\n"
-        "Можешь также написать `/найди душ` или `/найди магазин` (нужна геолокация).",
-        parse_mode="Markdown"
+        "Можешь также написать /найди душ или /найди магазин (нужна геолокация)."
     )
 
 # Команда /найди
 async def find_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(
-            "Напиши, что искать: душ, магазин или парковку. Пример: `/find душ`",
-            parse_mode="Markdown"
+            "Напиши, что искать: душ, магазин или парковку. Пример: /найди душ"
         )
         return
 
@@ -73,13 +72,13 @@ async def find_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
     await update.message.reply_text(
-        "Я не знаю, как это искать. Примеры: `/найди душ`, `/найди магазин`."
+        "Я не знаю, как это искать. Примеры: /найди душ, /найди магазин."
     )
 
 # Обработка геолокации
 async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if "search_tag" not in context.user_data:
-        await update.message.reply_text("Сначала скажи, что искать. Например: `/найди душ`")
+        await update.message.reply_text("Сначала скажи, что искать. Например: /найди душ")
         return
 
     lat = update.message.location.latitude
@@ -95,11 +94,11 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for i, place in enumerate(results[:5], 1):
         name = place.get("tags", {}).get("name", "Без названия")
         dist = round(place["dist"], 1)
-        text += f"{i}. {label} *{name}* — ~{dist} м\n"
+        text += f"{i}. {label} {name} — ~{dist} м\n"
 
-    await update.message.reply_text(text, parse_mode="Markdown")
+    await update.message.reply_text(text)
 
-# Обработка текста
+# Обработка обычных сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text.strip()
     context_history.append({"role": "user", "content": user_input})
@@ -114,11 +113,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❌ Ошибка при запросе к GPT.")
 
-# Запуск бота
-if __name__ == '__main__':
+# Главная функция запуска
+async def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("find", find_command))
+    
+    # Удалить вебхук перед polling (важно!)
+    await app.bot.delete_webhook(drop_pending_updates=True)
+    
+    app.add_handler(CommandHandler(["start"], start))
+    app.add_handler(CommandHandler(["find", "найди"], find_command))
     app.add_handler(MessageHandler(filters.LOCATION, handle_location))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.run_polling()
+    
+    await app.run_polling()
+
+if __name__ == '__main__':
+    asyncio.run(main())
