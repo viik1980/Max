@@ -38,9 +38,7 @@ async def ask_gpt(messages):
 # /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Здорова, я — Макс. Диспетчер, друг и напарник. Пиши или говори — помогу!
-
-"
+        "Здорова, я — Макс. Диспетчер, друг и напарник. Пиши или говори — помогу!\n\n"
         "Можешь также написать `/найди душ` или `/найди магазин` (нужна геолокация).",
         parse_mode="Markdown"
     )
