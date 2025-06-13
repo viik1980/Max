@@ -5,8 +5,9 @@ import tempfile
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
+from overpass_utils import query_overpass, parse_places
 
-# Простейшая память между сообщениями
+# Простая память между сообщениями
 context_history = []
 MAX_TURNS = 6
 
@@ -17,7 +18,10 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 openai.api_key = OPENAI_API_KEY
 
 # Логирование
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 
 # Загрузка промта
 try:
@@ -26,7 +30,7 @@ try:
 except FileNotFoundError:
     SYSTEM_PROMPT = "Ты — Макс. Диспетчер, помощник и навигатор по жизни в рейсе."
 
-# Ключевые слова -> знания
+# Загрузка базы знаний по ключевым словам
 def load_relevant_knowledge(user_input: str) -> str:
     keywords_map = {
         "отдых": "Rezim_RTO.md",
@@ -73,7 +77,7 @@ async def ask_gpt(messages):
 
 # Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Здорова, я — Макс. Диспетчер, друг и напарник. Пиши или говори — помогу!")
+    await update.message.reply_text("Здорова, я — Макс. Диспетчер, друг и напарник. Пиши, говори или отправляй координаты — разберёмся!")
 
 # Обработка текстовых сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -84,14 +88,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     lowered = user_input.lower()
 
-    # Если пользователь просит картинку
-    if any(keyword in lowered for keyword in ["нарисуй", "покажи", "сгенерируй", "изображение", "картинку", "как выглядит", "картина"]):
+    # Генерация изображения
+    if any(keyword in lowered for keyword in ["нарисуй", "покажи", "сгенерируй", "изображение", "картинку", "картина"]):
         try:
-            image_response = openai.Image.create(
-                prompt=user_input,
-                n=1,
-                size="512x512"
-            )
+            image_response = openai.Image.create(prompt=user_input, n=1, size="512x512")
             image_url = image_response['data'][0]['url']
             await update.message.reply_photo(photo=image_url, caption="🖼️ Вот как это может выглядеть:")
             return
@@ -100,6 +100,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Не удалось сгенерировать изображение. Попробуй позже.")
             return
 
+    # Контекст
     context_history.append({"role": "user", "content": user_input})
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     kb_snippet = load_relevant_knowledge(user_input)
@@ -108,7 +109,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     messages += context_history[-MAX_TURNS:]
 
     response = await ask_gpt(messages)
-
     if response:
         assistant_reply = response.choices[0].message.content.strip()
         context_history.append({"role": "assistant", "content": assistant_reply})
@@ -142,7 +142,6 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         messages += context_history[-MAX_TURNS:]
 
         response = await ask_gpt(messages)
-
         if response:
             assistant_reply = response.choices[0].message.content.strip()
             context_history.append({"role": "assistant", "content": assistant_reply})
@@ -154,11 +153,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"[ERROR] Голосовая ошибка: {e}")
         await update.message.reply_text("⚠️ Не смог обработать голос. Возможно, проблема с форматом.")
 
-# ... (остальной код без изменений выше)
-
-from overpass_utils import query_overpass, parse_places
-
-# Геолокация
+# Обработка геолокации
 async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lat = update.message.location.latitude
     lon = update.message.location.longitude
@@ -174,11 +169,11 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("⚠️ Не удалось получить данные от Overpass API.")
 
-# Запуск (обновлён)
+# Запуск бота
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
-    app.add_handler(MessageHandler(filters.LOCATION, handle_location))  # <-- добавлен
+    app.add_handler(MessageHandler(filters.LOCATION, handle_location))
     app.run_polling()
