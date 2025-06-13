@@ -1,10 +1,12 @@
 import logging
 import os
 import openai
-import tempfile
 import asyncio
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, MessageHandler,
+    filters, ContextTypes
+)
 from dotenv import load_dotenv
 from overpass_utils import find_nearby_places
 
@@ -19,16 +21,19 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 openai.api_key = OPENAI_API_KEY
 
 # Логирование
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 
-# Промт из файла или по умолчанию
+# Промт
 try:
     with open("prompt.txt", "r", encoding="utf-8") as f:
         SYSTEM_PROMPT = f.read()
 except FileNotFoundError:
     SYSTEM_PROMPT = "Ты — Макс. Диспетчер, помощник и навигатор по жизни в рейсе."
 
-# GPT-ответ
+# GPT
 async def ask_gpt(messages):
     try:
         return await openai.ChatCompletion.acreate(
@@ -41,15 +46,18 @@ async def ask_gpt(messages):
             messages=messages
         )
 
-# Команда /start
+# /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Здорова, я — Макс. Диспетчер, друг и напарник. Пиши или говори — помогу!\n\n"
         "Можешь также написать /найди душ или /найди магазин (нужна геолокация)."
     )
 
-# Команда /найди
+# /найди
 async def find_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.text.startswith("/найди"):
+        context.args = update.message.text.split()[1:]
+
     if not context.args:
         await update.message.reply_text(
             "Напиши, что искать: душ, магазин или парковку. Пример: /найди душ"
@@ -71,11 +79,9 @@ async def find_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("📍 Пришли мне геолокацию — и я найду " + label)
             return
 
-    await update.message.reply_text(
-        "Я не знаю, как это искать. Примеры: /найди душ, /найди магазин."
-    )
+    await update.message.reply_text("Я не знаю, как это искать. Примеры: /найди душ, /найди магазин.")
 
-# Обработка геолокации
+# Геолокация
 async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if "search_tag" not in context.user_data:
         await update.message.reply_text("Сначала скажи, что искать. Например: /найди душ")
@@ -98,7 +104,7 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(text)
 
-# Обработка обычных сообщений
+# GPT-ответы
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text.strip()
     context_history.append({"role": "user", "content": user_input})
@@ -113,20 +119,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❌ Ошибка при запросе к GPT.")
 
-# Главная функция запуска
+# Запуск
 async def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    
-    # Удалить вебхук перед polling (важно!)
+
     await app.bot.delete_webhook(drop_pending_updates=True)
-    
-    # Добавление хендлеров
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("find", find_command))
-app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/найди\b"), find_command))
-app.add_handler(MessageHandler(filters.LOCATION, handle_location))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("find", find_command))
+    app.add_handler(MessageHandler(filters.Regex(r"^/найди\b"), find_command))
+    app.add_handler(MessageHandler(filters.LOCATION, handle_location))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
     await app.run_polling()
 
 if __name__ == '__main__':
