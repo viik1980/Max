@@ -159,29 +159,45 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lat = update.message.location.latitude
     lon = update.message.location.longitude
-    await update.message.reply_text("📍 Получил координаты. Ищу ближайшие парки...")
+    await update.message.reply_text("📍 Получил координаты. Ищу поблизости нужные места...")
 
-    search_type = "паркинг, продукты"
-    url = f"https://maps.googleapis.com/maps/api/place/nearbysearch/json?location={lat},{lon}&radius=5000&type=park&key={GOOGLE_MAPS_API_KEY}"
+    place_types = {
+        "🅿️ Парковка": "parking",
+        "🛒 Магазин": "supermarket",
+        "🚿 Душевые": "car_wash",  # душевые можно имитировать как "car_wash", точнее — через Overpass
+        "🚛 Парковка для фур": "parking"  # таких мест в Google Maps нет как отдельного типа, но можно использовать фильтрацию по названию
+    }
 
-    try:
-        res = requests.get(url)
-        data = res.json()
-        if data.get("results"):
-            buttons = []
-            reply = "🏞️ Нашёл такие места рядом с тобой:\n\n"
-            for place in data["results"][:5]:
-                name = place["name"]
-                address = place.get("vicinity", "Без адреса")
-                loc = place["geometry"]["location"]
-                dest_lat, dest_lon = loc["lat"], loc["lng"]
-                maps_url = f"https://www.google.com/maps/dir/?api=1&destination={dest_lat},{dest_lon}"
-                reply += f"• {name}\n📍 {address}\n🔗 [Маршрут]({maps_url})\n\n"
-                buttons.append([InlineKeyboardButton(text=f"➡️ {name}", url=maps_url)])
+    results = []
 
-            await update.message.reply_markdown(reply, reply_markup=InlineKeyboardMarkup(buttons))
-        else:
-            await update.message.reply_text("😔 Ничего не нашёл поблизости.")
+    for label, place_type in place_types.items():
+        url = (
+            f"https://maps.googleapis.com/maps/api/place/nearbysearch/json"
+            f"?location={lat},{lon}&radius=7000&type={place_type}&key={GOOGLE_MAPS_API_KEY}"
+        )
+        try:
+            res = requests.get(url)
+            data = res.json()
+            if data.get("results"):
+                for place in data["results"][:5]:
+                    name = place["name"]
+                    address = place.get("vicinity", "Без адреса")
+                    loc = place["geometry"]["location"]
+                    maps_url = f"https://www.google.com/maps/dir/?api=1&destination={loc['lat']},{loc['lng']}"
+                    results.append((label, name, address, maps_url))
+        except Exception as e:
+            logging.error(f"Ошибка запроса {place_type}: {e}")
+
+    if results:
+        reply = "📌 Нашёл такие места рядом:\n\n"
+        buttons = []
+        for label, name, address, url in results:
+            reply += f"{label} **{name}**\n📍 {address}\n🔗 [Маршрут]({url})\n\n"
+            buttons.append([InlineKeyboardButton(text=f"{label} {name}", url=url)])
+        await update.message.reply_markdown(reply, reply_markup=InlineKeyboardMarkup(buttons))
+    else:
+        await update.message.reply_text("😔 Ничего не нашёл поблизости.")
+
     except Exception as e:
         logging.error(f"Ошибка при запросе Google Maps API: {e}")
         await update.message.reply_text("❌ Ошибка при поиске. Попробуй позже.")
