@@ -164,6 +164,7 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("📍 Получил координаты. Ищу поблизости нужные места...")
 
         place_types = {
+            " Прогулка": "park",
             "🅿️ Парковка": "parking",
             "🛒 Магазин": "supermarket",
             "🚿 Душевые": "shower",  # душевые можно имитировать как "car_wash", точнее — через Overpass
