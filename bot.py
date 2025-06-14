@@ -325,9 +325,13 @@ async def search_with_google(query, context: ContextTypes.DEFAULT_TYPE, lat: flo
                     reply += f"  • **{name}** ({distance_km:.1f} км)\n    📍 {address}\n    🔗 [Маршрут]({url})\n"
                     buttons.append([InlineKeyboardButton(text=f"{label}: {name} ({distance_km:.1f} км)", url=url)])
                 reply += "\n"
-            await update.callback_query.message.reply_markdown(reply, reply_markup=InlineKeyboardMarkup(buttons))
+            await query.message.reply_markdown(reply, reply_markup=InlineKeyboardMarkup(buttons))
         else:
-            await update.callback_query.message.reply_text("😔 Ничего не нашёл поблизости (Google Maps).")
+            await query.message.reply_text("😔 Ничего не нашёл поблизости (Google Maps).")
+
+    except Exception as e:
+        logger.error(f"Ошибка поиска Google API: {e}", exc_info=True)
+        await query.message.reply_text("❌ Ошибка при поиске через Google Maps.")
 
     except Exception as e:
         logger.error(f"Ошибка поиска Google API: {e}", exc_info=True)
