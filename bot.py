@@ -266,16 +266,68 @@ async def search_with_google(query, context: ContextTypes.DEFAULT_TYPE, lat: flo
         found_results_grouped = {}
         base_url = "https://maps.googleapis.com/maps/api/place/"
         user_location = (lat, lon)
-        
-        for query_info in place_queries:
-            # Логика формирования URL из оригинального кода
-            # ...
-            # Внутри цикла запросов:
-            # res = requests.get(url, timeout=REQUEST_TIMEOUT)
-            pass # Логика запросов к Google API оставлена для краткости
 
-        # Заглушка, замените на вашу полную логику
-        await query.message.reply_text("Здесь будет результат поиска по Google Maps (логика в коде сохранена).")
+        for query_info in place_queries:
+            label = query_info["label"]
+            place_type = query_info.get("type")
+            keyword = query_info.get("keyword")
+            radius = query_info.get("radius", 5000)
+
+            url = ""
+            if place_type and not keyword:
+                url = (
+                    f"{base_url}nearbysearch/json"
+                    f"?location={lat},{lon}&type={place_type}&key={GOOGLE_MAPS_API_KEY}&language=ru&rankby=distance"
+                )
+            elif keyword:
+                query_str = urllib.parse.quote(f"{keyword} рядом с {lat},{lon}")
+                url = (
+                    f"{base_url}textsearch/json"
+                    f"?query={query_str}&radius={radius}&key={GOOGLE_MAPS_API_KEY}&language=ru"
+                )
+            else:
+                logger.warning(f"Пропущен запрос: Недостаточно данных для {label}")
+                continue
+
+            try:
+                logger.info(f"Google API запрос для {label}: {url}")
+                res = requests.get(url)
+                res.raise_for_status()
+                data = res.json()
+
+                if data.get("results"):
+                    if label not in found_results_grouped:
+                        found_results_grouped[label] = []
+                    for place in data["results"][:5]:
+                        name = place.get("name")
+                        address = place.get("vicinity", "Без адреса")
+                        loc = place["geometry"]["location"]
+                        place_location = (loc["lat"], loc["lng"])
+                        distance_km = geodesic(user_location, place_location).kilometers
+
+                        if distance_km <= MAX_DISTANCE_KM:
+                            place_id = place["place_id"]
+                            maps_url = f"https://www.google.com/maps/dir/?api=1&origin={lat},{lon}&destination={loc['lat']},{loc['lng']}&travelmode=driving"
+                            if (name, address) not in [(item[0], item[1]) for item in found_results_grouped[label]]:
+                                found_results_grouped[label].append((name, address, maps_url, distance_km))
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Ошибка HTTP запроса Google API для {label}: {e}")
+            except Exception as e:
+                logger.error(f"Ошибка обработки данных Google API для {label}: {e}")
+
+        if found_results_grouped:
+            reply = "📌 Нашёл такие места рядом (Google Maps):\n\n"
+            buttons = []
+            for label, places in found_results_grouped.items():
+                reply += f"**{label}**:\n"
+                places.sort(key=lambda x: x[3])  # Сортировка по расстоянию
+                for name, address, url, distance_km in places:
+                    reply += f"  • **{name}** ({distance_km:.1f} км)\n    📍 {address}\n    🔗 [Маршрут]({url})\n"
+                    buttons.append([InlineKeyboardButton(text=f"{label}: {name} ({distance_km:.1f} км)", url=url)])
+                reply += "\n"
+            await update.callback_query.message.reply_markdown(reply, reply_markup=InlineKeyboardMarkup(buttons))
+        else:
+            await update.callback_query.message.reply_text("😔 Ничего не нашёл поблизости (Google Maps).")
 
     except Exception as e:
         logger.error(f"Ошибка поиска Google API: {e}", exc_info=True)
