@@ -23,7 +23,7 @@ MAX_TURNS = 6
 load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-Maps_API_KEY = os.getenv("Maps_API_KEY")
+GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
 openai.api_key = OPENAI_API_KEY
 
 # Загрузка промта системы для GPT
@@ -246,14 +246,14 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if place_type and not keyword: # Если есть тип, но нет специфического ключевого слова
                 url = (
                     f"{base_url}nearbysearch/json"
-                    f"?location={lat},{lon}&radius={radius}&type={place_type}&key={Maps_API_KEY}&language=ru"
+                    f"?location={lat},{lon}&radius={radius}&type={place_type}&key={GOOGLE_MAPS_API_KEY}&language=ru"
                 )
             elif keyword: # Если есть ключевое слово (предпочтительнее Text Search для сложных запросов)
                 # Для Text Search рекомендуется использовать query, включающий местоположение для релевантности
                 query_str = f"{keyword} рядом с {lat},{lon}"
                 url = (
                     f"{base_url}textsearch/json"
-                    f"?query={query_str}&radius={radius}&key={Maps_API_KEY}&language=ru"
+                    f"?query={query_str}&radius={radius}&key={GOOGLE_MAPS_API_KEY}&language=ru"
                 )
             else:
                 logger.warning(f"Пропущен запрос: Недостаточно данных для {label}")
