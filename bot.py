@@ -4,6 +4,7 @@ import openai
 import tempfile
 import requests
 import urllib.parse
+from geopy.distance import geodesic
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 from dotenv import load_dotenv
@@ -16,9 +17,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # --- Глобальные переменные и загрузка окружения ---
-# Простая память между сообщениями
 context_history = []
 MAX_TURNS = 6
+MAX_DISTANCE_KM = 50  # Максимальное расстояние для результатов (в км)
 
 # Загрузка .env
 load_dotenv()
@@ -111,7 +112,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     lowered = user_input.lower()
 
-    # Генерация изображения
     if any(keyword in lowered for keyword in ["нарисуй", "покажи", "сгенерируй", "изображение", "картинку", "картина"]):
         try:
             image_response = await openai.Image.acreate(prompt=user_input, n=1, size="512x512")
@@ -127,7 +127,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Не удалось сгенерировать изображение. Попробуй позже.")
             return
 
-    # Подготовка сообщений для GPT
     context_history.append({"role": "user", "content": user_input})
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     
@@ -220,7 +219,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         await search_with_overpass(update, context, lat, lon)
 
 async def search_with_google(update: Update, context: ContextTypes.DEFAULT_TYPE, lat: float, lon: float):
-    """Поиск мест через Google Places API с приоритетом по расстоянию."""
+    """Поиск мест через Google Places API с фильтрацией по расстоянию."""
     try:
         place_queries = [
             {"label": "🌳 Прогулка/Дост.", "type": "tourist_attraction", "keyword": "парк|достопримечательность|отдых", "radius": 5000},
@@ -237,6 +236,7 @@ async def search_with_google(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
         found_results_grouped = {}
         base_url = "https://maps.googleapis.com/maps/api/place/"
+        user_location = (lat, lon)
 
         for query_info in place_queries:
             label = query_info["label"]
@@ -269,14 +269,18 @@ async def search_with_google(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 if data.get("results"):
                     if label not in found_results_grouped:
                         found_results_grouped[label] = []
-                    for place in data["results"][:5]:
+                    for place in data["results"][:3]:
                         name = place.get("name")
                         address = place.get("vicinity", "Без адреса")
                         loc = place["geometry"]["location"]
-                        place_id = place["place_id"]
-                        maps_url = f"https://www.google.com/maps/search/?api=1&query={loc['lat']},{loc['lng']}&query_place_id={place_id}"
-                        if (name, address) not in [(item[0], item[1]) for item in found_results_grouped[label]]:
-                            found_results_grouped[label].append((name, address, maps_url))
+                        place_location = (loc["lat"], loc["lng"])
+                        distance_km = geodesic(user_location, place_location).kilometers
+
+                        if distance_km <= MAX_DISTANCE_KM:
+                            place_id = place["place_id"]
+                            maps_url = f"https://www.google.com/maps/dir/?api=1&origin={lat},{lon}&destination={loc['lat']},{loc['lng']}&travelmode=driving"
+                            if (name, address) not in [(item[0], item[1]) for item in found_results_grouped[label]]:
+                                found_results_grouped[label].append((name, address, maps_url, distance_km))
             except requests.exceptions.RequestException as e:
                 logger.error(f"Ошибка HTTP запроса Google API для {label}: {e}")
             except Exception as e:
@@ -287,9 +291,10 @@ async def search_with_google(update: Update, context: ContextTypes.DEFAULT_TYPE,
             buttons = []
             for label, places in found_results_grouped.items():
                 reply += f"**{label}**:\n"
-                for name, address, url in places:
-                    reply += f"  • **{name}**\n    📍 {address}\n    🔗 [Маршрут]({url})\n"
-                    buttons.append([InlineKeyboardButton(text=f"{label}: {name}", url=url)])
+                places.sort(key=lambda x: x[3])  # Сортировка по расстоянию
+                for name, address, url, distance_km in places:
+                    reply += f"  • **{name}** ({distance_km:.1f} км)\n    📍 {address}\n    🔗 [Маршрут]({url})\n"
+                    buttons.append([InlineKeyboardButton(text=f"{label}: {name} ({distance_km:.1f} км)", url=url)])
                 reply += "\n"
             await update.callback_query.message.reply_markdown(reply, reply_markup=InlineKeyboardMarkup(buttons))
         else:
@@ -299,7 +304,7 @@ async def search_with_google(update: Update, context: ContextTypes.DEFAULT_TYPE,
         await update.callback_query.message.reply_text("❌ Ошибка при поиске через Google Maps.")
 
 async def search_with_overpass(update: Update, context: ContextTypes.DEFAULT_TYPE, lat: float, lon: float):
-    """Поиск мест через Overpass API (OpenStreetMap)."""
+    """Поиск мест через Overpass API (OpenStreetMap) с маршрутами в Google Maps."""
     try:
         place_queries = [
             {"label": "🌳 Прогулка/Дост.", "query": f'node["tourism"="attraction"](around:5000,{lat},{lon});node["leisure"="park"](around:5000,{lat},{lon});'},
@@ -312,6 +317,7 @@ async def search_with_overpass(update: Update, context: ContextTypes.DEFAULT_TYP
 
         found_results_grouped = {}
         overpass_url = "http://overpass-api.de/api/interpreter"
+        user_location = (lat, lon)
 
         for query_info in place_queries:
             label = query_info["label"]
@@ -328,11 +334,21 @@ async def search_with_overpass(update: Update, context: ContextTypes.DEFAULT_TYP
                         found_results_grouped[label] = []
                     for element in data["elements"][:3]:
                         name = element["tags"].get("name", "Без названия")
-                        address = element["tags"].get("addr:full", "Без адреса")
+                        # Собираем адрес из доступных тегов
+                        address_parts = []
+                        for tag in ["addr:street", "addr:housenumber", "addr:city", "addr:country"]:
+                            if tag in element["tags"]:
+                                address_parts.append(element["tags"][tag])
+                        address = ", ".join(address_parts) if address_parts else "Без адреса"
                         el_lat, el_lon = element["lat"], element["lon"]
-                        maps_url = f"https://www.openstreetmap.org/?mlat={el_lat}&mlon={el_lon}#map=15/{el_lat}/{el_lon}"
-                        if (name, address) not in [(item[0], item[1]) for item in found_results_grouped[label]]:
-                            found_results_grouped[label].append((name, address, maps_url))
+                        place_location = (el_lat, el_lon)
+                        distance_km = geodesic(user_location, place_location).kilometers
+
+                        if distance_km <= MAX_DISTANCE_KM:
+                            # Формируем ссылку на Google Maps с маршрутом
+                            maps_url = f"https://www.google.com/maps/dir/?api=1&origin={lat},{lon}&destination={el_lat},{el_lon}&travelmode=driving"
+                            if (name, address) not in [(item[0], item[1]) for item in found_results_grouped[label]]:
+                                found_results_grouped[label].append((name, address, maps_url, distance_km))
             except requests.exceptions.RequestException as e:
                 logger.error(f"Ошибка HTTP запроса Overpass API для {label}: {e}")
             except Exception as e:
@@ -343,13 +359,14 @@ async def search_with_overpass(update: Update, context: ContextTypes.DEFAULT_TYP
             buttons = []
             for label, places in found_results_grouped.items():
                 reply += f"**{label}**:\n"
-                for name, address, url in places:
-                    reply += f"  • **{name}**\n    📍 {address}\n    🔗 [Маршрут]({url})\n"
-                    buttons.append([InlineKeyboardButton(text=f"{label}: {name}", url=url)])
+                places.sort(key=lambda x: x[3])  # Сортировка по расстоянию
+                for name, address, url, distance_km in places:
+                    reply += f"  • **{name}** ({distance_km:.1f} км)\n    📍 {address}\n    🔗 [Маршрут]({url})\n"
+                    buttons.append([InlineKeyboardButton(text=f"{label}: {name} ({distance_km:.1f} км)", url=url)])
                 reply += "\n"
             await update.callback_query.message.reply_markdown(reply, reply_markup=InlineKeyboardMarkup(buttons))
         else:
-            await update.callback_query.message.reply_text("😔 Ничего не нашёл поблизости (OpenStreetMap).")
+            await update.callback_query.message.reply_text("😔 Ничего не нашёл поблизости (OpenStreetMap). Попробуй Google Maps или уточни запрос.")
     except Exception as e:
         logger.error(f"Ошибка поиска Overpass API: {e}", exc_info=True)
         await update.callback_query.message.reply_text("❌ Ошибка при поиске через OpenStreetMap.")
