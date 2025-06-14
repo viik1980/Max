@@ -5,7 +5,7 @@ import asyncio
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
-from overpass_utils import find_nearby_places
+from overpass_utils import query_overpass, parse_places
 
 # История сообщений
 context_history = []
