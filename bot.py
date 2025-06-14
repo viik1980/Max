@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 # --- Глобальные переменные и загрузка окружения ---
 context_history = []
-MAX_TURNS = 6
+MAX_TURNS = 4
 MAX_DISTANCE_KM = 50  # Максимальное расстояние для результатов (в км)
 
 # Загрузка .env
