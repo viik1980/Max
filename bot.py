@@ -156,7 +156,6 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Не смог обработать голос. Возможно, проблема с форматом.")
 
 # Обработка геолокации
-# Обработка геолокации
 async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         lat = update.message.location.latitude
@@ -164,7 +163,7 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("📍 Получил координаты. Ищу поблизости нужные места...")
 
         place_types = {
-            " Прогулка": "park",
+            " Прогулка": "Достопримичательность, парк",
             "🅿️ Парковка": "parking",
             "🛒 Магазин": "supermarket",
             "🚿 Душевые": "shower",  # душевые можно имитировать как "car_wash", точнее — через Overpass
@@ -182,7 +181,7 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 res = requests.get(url)
                 data = res.json()
                 if data.get("results"):
-                    for place in data["results"][:5]:
+                    for place in data["results"][:3]:
                         name = place["name"]
                         address = place.get("vicinity", "Без адреса")
                         loc = place["geometry"]["location"]
