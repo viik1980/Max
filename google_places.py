@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
 
-async def find_nearby_places(lat, lon, place_type="park", radius=3000):
+async def find_nearby_places(lat, lon, place_type="park", radius=5000):
     url = (
         f"https://maps.googleapis.com/maps/api/place/nearbysearch/json?"
         f"location={lat},{lon}&radius={radius}&type={place_type}&key={GOOGLE_MAPS_API_KEY}"
