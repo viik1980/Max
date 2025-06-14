@@ -25,7 +25,7 @@ REQUEST_TIMEOUT = 15       # Таймаут для внешних HTTP запр�
 load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-Maps_API_KEY = os.getenv("Maps_API_KEY")
+GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
 
 # --- Инициализация клиентов ---
 # Используем современный асинхронный клиент OpenAI
@@ -313,7 +313,7 @@ async def search_with_overpass(query, context: ContextTypes.DEFAULT_TYPE, lat: f
 
 # --- Запуск бота ---
 if __name__ == '__main__':
-    if not all([TELEGRAM_TOKEN, OPENAI_API_KEY, Maps_API_KEY]):
+    if not all([TELEGRAM_TOKEN, OPENAI_API_KEY, GOOGLE_MAPS_API_KEY):
         logger.critical("Не установлены все необходимые переменные окружения!")
     else:
         app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
