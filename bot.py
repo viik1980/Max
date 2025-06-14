@@ -269,7 +269,7 @@ async def search_with_google(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 if data.get("results"):
                     if label not in found_results_grouped:
                         found_results_grouped[label] = []
-                    for place in data["results"][:3]:
+                    for place in data["results"][:5]:
                         name = place.get("name")
                         address = place.get("vicinity", "Без адреса")
                         loc = place["geometry"]["location"]
