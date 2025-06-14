@@ -161,7 +161,7 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lon = update.message.location.longitude
     await update.message.reply_text("📍 Получил координаты. Ищу ближайшие парки...")
 
-    search_type = "парки"
+    search_type = "паркинг, продукты"
     url = f"https://maps.googleapis.com/maps/api/place/nearbysearch/json?location={lat},{lon}&radius=5000&type=park&key={GOOGLE_MAPS_API_KEY}"
 
     try:
