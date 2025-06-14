@@ -313,7 +313,7 @@ async def search_with_overpass(query, context: ContextTypes.DEFAULT_TYPE, lat: f
 
 # --- Запуск бота ---
 if __name__ == '__main__':
-    if not all([TELEGRAM_TOKEN, OPENAI_API_KEY, GOOGLE_MAPS_API_KEY):
+    if not all([TELEGRAM_TOKEN, OPENAI_API_KEY, GOOGLE_MAPS_API_KEY]):
         logger.critical("Не установлены все необходимые переменные окружения!")
     else:
         app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
