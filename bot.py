@@ -102,7 +102,7 @@ async def summarize_history(history: list) -> str:
 
 async def ask_gpt(messages: list) -> str:
     """
-    Отправляет запрос к GPT, используя модели из оригинального кода.
+    Отправляет запрос к GPT, используя gpt-3.5-turbo.
     """
     try:
         response = await client.chat.completions.create(model="gpt-3.5-turbo", messages=messages)
@@ -248,13 +248,13 @@ async def search_with_google(query, context: ContextTypes.DEFAULT_TYPE, lat: flo
     """Поиск мест через Google Places API с фильтрацией по расстоянию."""
     try:
         place_queries = [
-            {"label": "🌳 Парки", "type": "park", "radius": 10000},
-            {"label": "🏛 Достопримечательности", "type": "tourist_attraction", "radius": 10000},
-            {"label": "🚛 Парковка для фур", "type": "parking", "keyword": "грузовая парковка|truck parking", "radius": 10000},
-            {"label": "🏨 Отель/Мотель", "type": "lodging", "keyword": "мотель|гостиница|hotel|motel", "radius": 10000},
+            {"label": "🌳 Парки", "type": "park", "keyword": "park", "radius": 10000},
+            {"label": "🏛 Достопримечательности", "type": "tourist_attraction", "keyword": "tourist attraction|museum|landmark", "radius": 75000},
+            {"label": "🚗 Парковка для фур", "keyword": "грузовая парковка|truck parking", "radius": 10000},
+            {"label": "🏨 Отель", "type": "hotel", "keyword": "мотель|гостиница|hotel|motel", "radius": 10000},
             {"label": "🛒 Магазин", "type": "supermarket", "radius": 5000},
-            {"label": "🧺 Прачечная", "keyword": "прачечная самообслуживания|self-service laundry", "radius": 5000},
-            {"label": "🚿 Душевые", "keyword": "душ|сауна|truck stop showers", "radius": 10000},
+            {"label": "🧼 Прачечная", "keyword": "self-service laundry", "radius": 5000},
+            {"label": "🚿 Душевые", "keyword": "showers|truck stop showers", "radius": 10000},
         ]
         found_results_grouped = {}
         base_url = "https://maps.googleapis.com/maps/api/place/"
@@ -264,50 +264,62 @@ async def search_with_google(query, context: ContextTypes.DEFAULT_TYPE, lat: flo
             label = query_info["label"]
             place_type = query_info.get("type")
             keyword = query_info.get("keyword")
-            radius = query_info.get("radius", 5000)
+            radius = query_info.get("radius", 10000)
 
-            url = ""
+            urls = []
+            # Основной запрос через nearbysearch для type
             if place_type:
-                url = (
+                urls.append((
                     f"{base_url}nearbysearch/json"
-                    f"?location={lat},{lon}&type={place_type}&radius={radius}&key={GOOGLE_MAPS_API_KEY}&language=ru"
-                )
-            elif keyword:
+                    f"?location={lat},{lon}&type={place_type}&rankby=distance&key={GOOGLE_MAPS_API_KEY}"
+                ))
+            # Дополнительный запрос через textsearch для парков и достопримечательностей
+            if keyword and label in ["🌳 Парки", "🏛 Достопримечательности"]:
                 query_str = urllib.parse.quote(keyword)
-                url = (
+                urls.append((
                     f"{base_url}textsearch/json"
                     f"?query={query_str}&location={lat},{lon}&radius={radius}&key={GOOGLE_MAPS_API_KEY}&language=ru"
-                )
-            else:
-                logger.warning(f"Пропущен запрос: Недостаточно данных для {label}")
-                continue
+                ))
+            elif keyword:
+                query_str = urllib.parse.quote(keyword)
+                urls.append((
+                    f"{base_url}textsearch/json"
+                    f"?query={query_str}&location={lat},{lon}&radius={radius}&key={GOOGLE_MAPS_API_KEY}"
+                ))
 
-            try:
-                logger.info(f"Google API запрос для {label}: {url}")
-                res = requests.get(url, timeout=REQUEST_TIMEOUT)
-                res.raise_for_status()
-                data = res.json()
-                logger.info(f"Результаты Google API для {label}: {data.get('results', [])}")
+            for url in urls:
+                try:
+                    logger.info(f"Google API запрос для {label}: {url}")
+                    res = requests.get(url, timeout=REQUEST_TIMEOUT)
+                    res.raise_for_status()
+                    data = res.json()
+                    logger.info(f"Статус Google API для {label}: {data.get('status')}")
+                        logger.info(f"Результаты Google API для {label}: {data.get('results', [])}")
 
-                if data.get("results"):
-                    if label not in found_results_grouped:
-                        found_results_grouped[label] = []
-                    for place in data["results"][:10]:
-                        name = place.get("name")
-                        address = place.get("vicinity", "Без адреса")
-                        loc = place["geometry"]["location"]
-                        place_location = (loc["lat"], loc["lng"])
-                        distance_km = geodesic(user_location, place_location).kilometers
+                    if data.get("status") != "OK":
+                        logger.warning(f"Google API вернул статус {data.get('status')} для {label}: {data.get('error_message', '')}")
+                            continue
 
-                        if distance_km <= MAX_DISTANCE_KM:
-                            place_id = place["place_id"]
-                            maps_url = f"https://www.google.com/maps/dir/?api=1&origin={lat},{lon}&destination={loc['lat']},{loc['lng']}&travelmode=driving"
-                            if (name, address) not in [(item[0], item[1]) for item in found_results_grouped[label]]:
-                                found_results_grouped[label].append((name, address, maps_url, distance_km))
-            except requests.exceptions.RequestException as e:
-                logger.error(f"Ошибка HTTP запроса Google API для {label}: {e}")
-            except Exception as e:
-                logger.error(f"Ошибка обработки данных Google API для {label}: {e}")
+                    if data.get("results"):
+                        if label not in found_results_grouped:
+                            found_results_grouped[label] = [] for place
+                                place
+                                in[" data["results"][:15]:
+                                    name = place.get("name")
+                                    address = place.get("vicinity", "Без адреса")
+                                    loc = place.get("geometry")["location"]
+                                    place_location = (loc["lat"], loc["lng"])
+                                    distance_km = geodesic(user_location, place_location).kilometers
+
+                                    if distance_km <= MAX_DISTANCE_KM:
+                                        place_id = place.get("place_id")
+                                        maps_url = f"https://www.google.com/maps/dir/?api=1&origin={lat},{lon}&destination={loc['lat']},{loc['lng']}&travelmode=driving"
+                                        if (name, address) not in [(item[0], item[1]) for item in found_results_grouped[label]]:
+                                            found_results_grouped[label].append((name, address, maps_url, distance_km))
+                except requests.exceptions.RequestException as e:
+                    logger.error(f"Ошибка HTTP запроса Google API для {label}: {e}")
+                except Exception as e:
+                    logger.error(f"Ошибка обработки данных Google API для {label}: {e}")
 
         reply, buttons = format_places_reply(found_results_grouped, "Google Maps")
         await query.message.reply_markdown(reply, reply_markup=buttons)
