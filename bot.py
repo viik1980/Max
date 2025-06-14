@@ -6,37 +6,26 @@ import requests
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
+# from overpass_utils import query_overpass, parse_places # Закомментировано, так как 'overpass_utils' не был предоставлен и не использовался в новой логике
 
 # --- Настройка логирования ---
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
-logger = logging.getLogger(__name__) # Используем logger вместо прямого logging
+logger = logging.getLogger(__name__)
 
 # --- Глобальные переменные и загрузка окружения ---
 # Простая память между сообщениями
 context_history = []
 MAX_TURNS = 6
 
-# Загрузка .env
+# Загрузка .env (ВОССТАНОВЛЕНО КАК В ПЕРВОМ СООБЩЕНИИ)
 load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 Maps_API_KEY = os.getenv("Maps_API_KEY")
-
-# Проверка наличия API-ключей
-if not TELEGRAM_TOKEN:
-    logger.error("TELEGRAM_TOKEN не найден в .env файле.")
-    exit("Отсутствует TELEGRAM_TOKEN. Убедитесь, что он прописан в файле .env")
-if not OPENAI_API_KEY:
-    logger.error("OPENAI_API_KEY не найден в .env файле.")
-    exit("Отсутствует OPENAI_API_KEY. Убедитесь, что он прописан в файле .env")
-if not Maps_API_KEY:
-    logger.error("Maps_API_KEY не найден в .env файле.")
-    exit("Отсутствует Maps_API_KEY. Убедитесь, что он прописан в файле .env")
-
-openai.api_key = OPENAI_API_KEY
+openai.api_key = OPENAI_API_KEY # Здесь присваивается ключ API для OpenAI
 
 # Загрузка промта системы для GPT
 try:
@@ -122,7 +111,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     lowered = user_input.lower()
 
-    # Генерация изображения (остается без изменений)
+    # Генерация изображения
     if any(keyword in lowered for keyword in ["нарисуй", "покажи", "сгенерируй", "изображение", "картинку", "картина"]):
         try:
             image_response = await openai.Image.acreate(prompt=user_input, n=1, size="512x512")
@@ -330,4 +319,3 @@ if __name__ == '__main__':
     
     logger.info("Бот запущен. Ожидание сообщений...")
     app.run_polling()
-
