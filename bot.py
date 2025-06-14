@@ -3,14 +3,11 @@ import os
 import openai
 import asyncio
 from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder, CommandHandler, MessageHandler,
-    filters, ContextTypes
-)
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
 from overpass_utils import find_nearby_places
 
-# Простая история сообщений
+# История сообщений
 context_history = []
 MAX_TURNS = 6
 
@@ -21,19 +18,16 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 openai.api_key = OPENAI_API_KEY
 
 # Логирование
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# Промт
+# Промт из файла или по умолчанию
 try:
     with open("prompt.txt", "r", encoding="utf-8") as f:
         SYSTEM_PROMPT = f.read()
 except FileNotFoundError:
     SYSTEM_PROMPT = "Ты — Макс. Диспетчер, помощник и навигатор по жизни в рейсе."
 
-# GPT
+# GPT-ответ
 async def ask_gpt(messages):
     try:
         return await openai.ChatCompletion.acreate(
@@ -46,18 +40,15 @@ async def ask_gpt(messages):
             messages=messages
         )
 
-# /start
+# Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Здорова, я — Макс. Диспетчер, друг и напарник. Пиши или говори — помогу!\n\n"
         "Можешь также написать /найди душ или /найди магазин (нужна геолокация)."
     )
 
-# /найди
+# Команда /найди
 async def find_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.text.startswith("/найди"):
-        context.args = update.message.text.split()[1:]
-
     if not context.args:
         await update.message.reply_text(
             "Напиши, что искать: душ, магазин или парковку. Пример: /найди душ"
@@ -79,7 +70,9 @@ async def find_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("📍 Пришли мне геолокацию — и я найду " + label)
             return
 
-    await update.message.reply_text("Я не знаю, как это искать. Примеры: /найди душ, /найди магазин.")
+    await update.message.reply_text(
+        "Я не знаю, как это искать. Примеры: /найди душ, /найди магазин."
+    )
 
 # Геолокация
 async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -104,7 +97,7 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(text)
 
-# GPT-ответы
+# Сообщения
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text.strip()
     context_history.append({"role": "user", "content": user_input})
@@ -123,15 +116,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
+    # Удаляем вебхук
     await app.bot.delete_webhook(drop_pending_updates=True)
 
+    # Хендлеры
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("find", find_command))
-    app.add_handler(MessageHandler(filters.Regex(r"^/найди\b"), find_command))
+    app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/найди\b"), find_command))
     app.add_handler(MessageHandler(filters.LOCATION, handle_location))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     await app.run_polling()
 
-if __name__ == '__main__':
-    asyncio.run(main())
+# Корректный запуск с asyncio
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except RuntimeError as e:
+        if "Cannot close a running event loop" in str(e):
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(main())
+        else:
+            raise
