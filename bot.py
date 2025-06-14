@@ -17,9 +17,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # --- Глобальные переменные и загрузка окружения ---
-MAX_TURNS_FOR_SUMMARY = 10 # Сколько последних сообщений использовать для создания сводки
-MAX_DISTANCE_KM = 50       # Максимальное расстояние для результатов (в км)
-REQUEST_TIMEOUT = 15       # Таймаут для внешних HTTP запросов в секундах
+MAX_TURNS_FOR_SUMMARY = 10  # Сколько последних сообщений использовать для создания сводки
+MAX_DISTANCE_KM = 50        # Максимальное расстояние для результатов (в км)
+REQUEST_TIMEOUT = 15        # Таймаут для внешних HTTP запросов в секундах
 
 # Загрузка .env
 load_dotenv()
@@ -28,7 +28,6 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
 
 # --- Инициализация клиентов ---
-# Используем современный асинхронный клиент OpenAI
 client = openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
 
 # Загрузка промта системы для GPT из файла
@@ -74,7 +73,6 @@ def load_relevant_knowledge(user_input: str) -> str:
     return "\n".join(texts) or ""
 
 # --- Функции для взаимодействия с GPT ---
-
 async def summarize_history(history: list) -> str:
     """
     [TOKEN OPTIMIZATION] Создает краткую сводку диалога, чтобы не отправлять всю историю.
@@ -91,7 +89,6 @@ async def summarize_history(history: list) -> str:
         f"Диалог для анализа:\n{dialogue}"
     )
     try:
-        # Для этой служебной задачи оставляем быструю и дешевую модель
         response = await client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
@@ -105,19 +102,14 @@ async def summarize_history(history: list) -> str:
 
 async def ask_gpt(messages: list) -> str:
     """
-    [MODIFIED] Отправляет запрос к GPT, используя модели из оригинального кода.
+    Отправляет запрос к GPT, используя модели из оригинального кода.
     """
     try:
-        response = await client.chat.completions.create(model="gpt-4.5-preview", messages=messages)
+        response = await client.chat.completions.create(model="gpt-3.5-turbo", messages=messages)
         return response.choices[0].message.content.strip()
     except openai.APIError as e:
-        logger.warning(f"GPT-4.5-preview недоступен, fallback к GPT-3.5: {e}")
-        try:
-            response = await client.chat.completions.create(model="gpt-3.5-turbo-1106", messages=messages)
-            return response.choices[0].message.content.strip()
-        except openai.APIError as e2:
-            logger.error(f"GPT-3.5 тоже не сработал: {e2}")
-            return None
+        logger.error(f"Ошибка OpenAI API (gpt-3.5-turbo): {e}")
+        return None
     except Exception as e:
         logger.error(f"Неизвестная ошибка при запросе к OpenAI API: {e}")
         return None
@@ -125,7 +117,7 @@ async def ask_gpt(messages: list) -> str:
 # --- Основная логика обработки запросов ---
 async def process_user_request(update: Update, context: ContextTypes.DEFAULT_TYPE, user_input: str):
     """
-    [REFACTORED] Общая функция для обработки текстовых и голосовых запросов.
+    Общая функция для обработки текстовых и голосовых запросов.
     """
     if 'history' not in context.user_data:
         context.user_data['history'] = []
@@ -157,12 +149,12 @@ async def process_user_request(update: Update, context: ContextTypes.DEFAULT_TYP
 # --- Обработчики команд и сообщений Telegram ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает команду /start."""
-    context.user_data.clear() # Очищаем историю при рестарте
+    context.user_data.clear()
     await update.message.reply_text("Здорова, я — Макс. Диспетчер, друг и напарник. Пиши, говори или отправляй координаты — разберёмся!")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    [MODIFIED] Обрабатывает текстовые сообщения пользователя. Генерация изображений убрана.
+    Обрабатывает текстовые сообщения пользователя.
     """
     user_input = update.message.text.strip()
     if not user_input:
@@ -237,7 +229,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         await query.edit_message_text(text="Произошла ошибка, попробуйте снова.")
 
 def format_places_reply(places_grouped: dict, source_name: str) -> (str, list):
-    """[REFACTORED] Форматирует ответ с найденными местами."""
+    """Форматирует ответ с найденными местами."""
     if not places_grouped:
         return f"😔 Ничего не нашёл поблизости ({source_name}).", None
 
@@ -256,7 +248,8 @@ async def search_with_google(query, context: ContextTypes.DEFAULT_TYPE, lat: flo
     """Поиск мест через Google Places API с фильтрацией по расстоянию."""
     try:
         place_queries = [
-            {"label": "🌳 Прогулка/Дост.", "type": "tourist_attraction", "keyword": "парк|достопримечательность|отдых", "radius": 5000},
+            {"label": "🌳 Парки", "type": "park", "radius": 10000},
+            {"label": "🏛 Достопримечательности", "type": "tourist_attraction", "radius": 10000},
             {"label": "🚛 Парковка для фур", "type": "parking", "keyword": "грузовая парковка|truck parking", "radius": 10000},
             {"label": "🏨 Отель/Мотель", "type": "lodging", "keyword": "мотель|гостиница|hotel|motel", "radius": 10000},
             {"label": "🛒 Магазин", "type": "supermarket", "radius": 5000},
@@ -274,16 +267,16 @@ async def search_with_google(query, context: ContextTypes.DEFAULT_TYPE, lat: flo
             radius = query_info.get("radius", 5000)
 
             url = ""
-            if place_type and not keyword:
+            if place_type:
                 url = (
                     f"{base_url}nearbysearch/json"
-                    f"?location={lat},{lon}&type={place_type}&key={GOOGLE_MAPS_API_KEY}&language=ru&rankby=distance"
+                    f"?location={lat},{lon}&type={place_type}&radius={radius}&key={GOOGLE_MAPS_API_KEY}&language=ru"
                 )
             elif keyword:
-                query_str = urllib.parse.quote(f"{keyword} рядом с {lat},{lon}")
+                query_str = urllib.parse.quote(keyword)
                 url = (
                     f"{base_url}textsearch/json"
-                    f"?query={query_str}&radius={radius}&key={GOOGLE_MAPS_API_KEY}&language=ru"
+                    f"?query={query_str}&location={lat},{lon}&radius={radius}&key={GOOGLE_MAPS_API_KEY}&language=ru"
                 )
             else:
                 logger.warning(f"Пропущен запрос: Недостаточно данных для {label}")
@@ -291,14 +284,15 @@ async def search_with_google(query, context: ContextTypes.DEFAULT_TYPE, lat: flo
 
             try:
                 logger.info(f"Google API запрос для {label}: {url}")
-                res = requests.get(url)
+                res = requests.get(url, timeout=REQUEST_TIMEOUT)
                 res.raise_for_status()
                 data = res.json()
+                logger.info(f"Результаты Google API для {label}: {data.get('results', [])}")
 
                 if data.get("results"):
                     if label not in found_results_grouped:
                         found_results_grouped[label] = []
-                    for place in data["results"][:5]:
+                    for place in data["results"][:10]:
                         name = place.get("name")
                         address = place.get("vicinity", "Без адреса")
                         loc = place["geometry"]["location"]
@@ -315,34 +309,18 @@ async def search_with_google(query, context: ContextTypes.DEFAULT_TYPE, lat: flo
             except Exception as e:
                 logger.error(f"Ошибка обработки данных Google API для {label}: {e}")
 
-        if found_results_grouped:
-            reply = "📌 Нашёл такие места рядом (Google Maps):\n\n"
-            buttons = []
-            for label, places in found_results_grouped.items():
-                reply += f"**{label}**:\n"
-                places.sort(key=lambda x: x[3])  # Сортировка по расстоянию
-                for name, address, url, distance_km in places:
-                    reply += f"  • **{name}** ({distance_km:.1f} км)\n    📍 {address}\n    🔗 [Маршрут]({url})\n"
-                    buttons.append([InlineKeyboardButton(text=f"{label}: {name} ({distance_km:.1f} км)", url=url)])
-                reply += "\n"
-            await query.message.reply_markdown(reply, reply_markup=InlineKeyboardMarkup(buttons))
-        else:
-            await query.message.reply_text("😔 Ничего не нашёл поблизости (Google Maps).")
-
+        reply, buttons = format_places_reply(found_results_grouped, "Google Maps")
+        await query.message.reply_markdown(reply, reply_markup=buttons)
     except Exception as e:
         logger.error(f"Ошибка поиска Google API: {e}", exc_info=True)
         await query.message.reply_text("❌ Ошибка при поиске через Google Maps.")
-
-    except Exception as e:
-        logger.error(f"Ошибка поиска Google API: {e}", exc_info=True)
-        await query.message.reply_text("❌ Ошибка при поиске через Google Maps.")
-
 
 async def search_with_overpass(query, context: ContextTypes.DEFAULT_TYPE, lat: float, lon: float):
     """Поиск мест через Overpass API (OpenStreetMap)."""
     try:
         place_queries = [
-            {"label": "🌳 Прогулка/Дост.", "query": f'node["tourism"="attraction"](around:5000,{lat},{lon});node["leisure"="park"](around:5000,{lat},{lon});'},
+            {"label": "🌳 Парки", "query": f'node["leisure"="park"](around:10000,{lat},{lon});'},
+            {"label": "🏛 Достопримечательности", "query": f'node["tourism"~"attraction|museum|monument"](around:10000,{lat},{lon});'},
             {"label": "🚛 Парковка для фур", "query": f'node["highway"="services"]["access"="truck"](around:10000,{lat},{lon});'},
             {"label": "🏨 Отель/Мотель", "query": f'node["tourism"~"hotel|motel"](around:10000,{lat},{lon});'},
             {"label": "🛒 Магазин", "query": f'node["shop"="supermarket"](around:5000,{lat},{lon});'},
@@ -354,15 +332,41 @@ async def search_with_overpass(query, context: ContextTypes.DEFAULT_TYPE, lat: f
         user_location = (lat, lon)
 
         for query_info in place_queries:
-            # Логика формирования запроса из оригинального кода
-            # ...
-            # Внутри цикла запросов:
-            # res = requests.post(overpass_url, data={"data": overpass_query}, timeout=REQUEST_TIMEOUT)
-            pass # Логика запросов к Overpass API оставлена для краткости
-            
-        # Заглушка, замените на вашу полную логику
-        await query.message.reply_text("Здесь будет результат поиска по OpenStreetMap (логика в коде сохранена).")
+            label = query_info["label"]
+            overpass_query = f"[out:json];{query_info['query']}out body;"
 
+            try:
+                logger.info(f"Overpass API запрос для {label}: {overpass_query}")
+                res = requests.post(overpass_url, data={"data": overpass_query}, timeout=REQUEST_TIMEOUT)
+                res.raise_for_status()
+                data = res.json()
+                logger.info(f"Результаты Overpass API для {label}: {data.get('elements', [])}")
+
+                if data.get("elements"):
+                    if label not in found_results_grouped:
+                        found_results_grouped[label] = []
+                    for element in data["elements"][:10]:
+                        name = element["tags"].get("name", "Без названия")
+                        address_parts = []
+                        for tag in ["addr:street", "addr:housenumber", "addr:city", "addr:country"]:
+                            if tag in element["tags"]:
+                                address_parts.append(element["tags"][tag])
+                        address = ", ".join(address_parts) if address_parts else "Без адреса"
+                        el_lat, el_lon = element["lat"], element["lon"]
+                        place_location = (el_lat, el_lon)
+                        distance_km = geodesic(user_location, place_location).kilometers
+
+                        if distance_km <= MAX_DISTANCE_KM:
+                            maps_url = f"https://www.google.com/maps/dir/?api=1&origin={lat},{lon}&destination={el_lat},{el_lon}&travelmode=driving"
+                            if (name, address) not in [(item[0], item[1]) for item in found_results_grouped[label]]:
+                                found_results_grouped[label].append((name, address, maps_url, distance_km))
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Ошибка HTTP запроса Overpass API для {label}: {e}")
+            except Exception as e:
+                logger.error(f"Ошибка обработки данных Overpass API для {label}: {e}")
+
+        reply, buttons = format_places_reply(found_results_grouped, "OpenStreetMap")
+        await query.message.reply_markdown(reply, reply_markup=buttons)
     except Exception as e:
         logger.error(f"Ошибка поиска Overpass API: {e}", exc_info=True)
         await query.message.reply_text("❌ Ошибка при поиске через OpenStreetMap.")
