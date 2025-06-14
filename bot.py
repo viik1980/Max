@@ -168,7 +168,7 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🅿️ Парковка": "parking",
             "🛒 Магазин": "supermarket",
             "🚿 Душевые": "shower",  # душевые можно имитировать как "car_wash", точнее — через Overpass
-            "🚛 Парковка для фур": "truk parking"
+            "🚛 Парковка для фур": "lkw parking"
         }
 
         results = []
