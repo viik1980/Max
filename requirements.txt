@@ -1,5 +1,5 @@
-python-telegram-bot>=20.0
-openai==0.28.1
-python-dotenv==1.0.0
-aiohttp
-requests
+python-telegram-bot>=20.0,<21.0  # Лучше зафиксировать верхнюю границу до выхода 21.x
+openai>=1.0.0                     # У тебя указана устаревшая 0.28.1 — лучше обновить
+python-dotenv>=1.0.0
+aiohttp>=3.8
+requests>=2.25
