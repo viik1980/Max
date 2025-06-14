@@ -6,7 +6,6 @@ import requests
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
-# from overpass_utils import query_overpass, parse_places # Закомментировано, так как 'overpass_utils' не был предоставлен и не использовался в новой логике
 
 # --- Настройка логирования ---
 logging.basicConfig(
@@ -20,12 +19,12 @@ logger = logging.getLogger(__name__)
 context_history = []
 MAX_TURNS = 6
 
-# Загрузка .env (ВОССТАНОВЛЕНО КАК В ПЕРВОМ СООБЩЕНИИ)
+# Загрузка .env
 load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
-openai.api_key = OPENAI_API_KEY # Здесь присваивается ключ API для OpenAI
+Maps_API_KEY = os.getenv("Maps_API_KEY")
+openai.api_key = OPENAI_API_KEY
 
 # Загрузка промта системы для GPT
 try:
@@ -247,14 +246,14 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if place_type and not keyword: # Если есть тип, но нет специфического ключевого слова
                 url = (
                     f"{base_url}nearbysearch/json"
-                    f"?location={lat},{lon}&radius={radius}&type={place_type}&key={GOOGLE_MAPS_API_KEY}&language=ru"
+                    f"?location={lat},{lon}&radius={radius}&type={place_type}&key={Maps_API_KEY}&language=ru"
                 )
             elif keyword: # Если есть ключевое слово (предпочтительнее Text Search для сложных запросов)
                 # Для Text Search рекомендуется использовать query, включающий местоположение для релевантности
                 query_str = f"{keyword} рядом с {lat},{lon}"
                 url = (
                     f"{base_url}textsearch/json"
-                    f"?query={query_str}&radius={radius}&key={GOOGLE_MAPS_API_KEY}&language=ru"
+                    f"?query={query_str}&radius={radius}&key={Maps_API_KEY}&language=ru"
                 )
             else:
                 logger.warning(f"Пропущен запрос: Недостаточно данных для {label}")
@@ -287,25 +286,25 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 logger.error(f"Ошибка обработки данных для {label}: {e}")
 
-            # Формируем ответное сообщение и кнопки
-            if found_results_grouped:
-                reply = "📌 Нашёл такие места рядом:\n\n"
-                buttons = []
-                
-                for label, places in found_results_grouped.items():
-                    reply += f"**{label}**:\n"
-                    for name, address, url in places:
-                        reply += f"  • **{name}**\n    📍 {address}\n    🔗 [Маршрут]({url})\n"
-                        buttons.append([InlineKeyboardButton(text=f"{label}: {name}", url=url)])
-                    reply += "\n" # Добавляем пустую строку для разделения категорий
+        # Формируем ответное сообщение и кнопки
+        if found_results_grouped:
+            reply = "📌 Нашёл такие места рядом:\n\n"
+            buttons = []
+            
+            for label, places in found_results_grouped.items():
+                reply += f"**{label}**:\n"
+                for name, address, url in places:
+                    reply += f"  • **{name}**\n    📍 {address}\n    🔗 [Маршрут]({url})\n"
+                    buttons.append([InlineKeyboardButton(text=f"{label}: {name}", url=url)])
+                reply += "\n" # Добавляем пустую строку для разделения категорий
 
-                await update.message.reply_markdown(reply, reply_markup=InlineKeyboardMarkup(buttons))
-            else:
-                await update.message.reply_text("😔 Ничего не нашёл поблизости.")
-        
-        except Exception as e:
-            logger.error(f"Критическая ошибка при обработке геолокации: {e}", exc_info=True)
-            await update.message.reply_text("❌ Ошибка при поиске. Попробуй позже.")
+            await update.message.reply_markdown(reply, reply_markup=InlineKeyboardMarkup(buttons))
+        else:
+            await update.message.reply_text("😔 Ничего не нашёл поблизости.")
+    
+    except Exception as e:
+        logger.error(f"Критическая ошибка при обработке геолокации: {e}", exc_info=True)
+        await update.message.reply_text("❌ Ошибка при поиске. Попробуй позже.")
 
 # --- Запуск бота ---
 if __name__ == '__main__':
