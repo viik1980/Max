@@ -2,10 +2,11 @@ import logging
 import os
 import openai
 import tempfile
-from telegram import Update
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
 from overpass_utils import query_overpass, parse_places
+import requests
 
 # Простая память между сообщениями
 context_history = []
@@ -15,6 +16,7 @@ MAX_TURNS = 6
 load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
 openai.api_key = OPENAI_API_KEY
 
 # Логирование
@@ -59,7 +61,8 @@ def load_relevant_knowledge(user_input: str) -> str:
             with open(path, "r", encoding="utf-8") as f:
                 content = f.read().strip()
                 if content:
-                    texts.append(f"📘 {filename}:\n{content}\n")
+                    texts.append(f"📘 {filename}:
+{content}\n")
 
     return "\n".join(texts) or ""
 
@@ -157,17 +160,32 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lat = update.message.location.latitude
     lon = update.message.location.longitude
-    await update.message.reply_text("📍 Получил координаты. Ищу рядом магазины, парковки и аптеки...")
+    await update.message.reply_text("📍 Получил координаты. Ищу ближайшие парки...")
 
-    data = await query_overpass(lat, lon)
-    if data:
-        places = parse_places(data)
-        if places:
-            await update.message.reply_text("\n\n".join(places))
+    search_type = "парки"
+    url = f"https://maps.googleapis.com/maps/api/place/nearbysearch/json?location={lat},{lon}&radius=5000&type=park&key={GOOGLE_MAPS_API_KEY}"
+
+    try:
+        res = requests.get(url)
+        data = res.json()
+        if data.get("results"):
+            buttons = []
+            reply = "🏞️ Нашёл такие места рядом с тобой:\n\n"
+            for place in data["results"][:5]:
+                name = place["name"]
+                address = place.get("vicinity", "Без адреса")
+                loc = place["geometry"]["location"]
+                dest_lat, dest_lon = loc["lat"], loc["lng"]
+                maps_url = f"https://www.google.com/maps/dir/?api=1&destination={dest_lat},{dest_lon}"
+                reply += f"• {name}\n📍 {address}\n🔗 [Маршрут]({maps_url})\n\n"
+                buttons.append([InlineKeyboardButton(text=f"➡️ {name}", url=maps_url)])
+
+            await update.message.reply_markdown(reply, reply_markup=InlineKeyboardMarkup(buttons))
         else:
-            await update.message.reply_text("❗ Ничего не нашёл поблизости.")
-    else:
-        await update.message.reply_text("⚠️ Не удалось получить данные от Overpass API.")
+            await update.message.reply_text("😔 Ничего не нашёл поблизости.")
+    except Exception as e:
+        logging.error(f"Ошибка при запросе Google Maps API: {e}")
+        await update.message.reply_text("❌ Ошибка при поиске. Попробуй позже.")
 
 # Запуск бота
 if __name__ == '__main__':
