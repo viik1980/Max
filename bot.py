@@ -16,6 +16,7 @@ load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
+openai.api_key = OPENAI_API_KEY
 
 # Проверка ключей
 if not TELEGRAM_TOKEN or not OPENAI_API_KEY or not GOOGLE_MAPS_API_KEY:
