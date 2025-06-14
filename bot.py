@@ -18,12 +18,6 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
 openai.api_key = OPENAI_API_KEY
 
-# Проверка ключей
-if not TELEGRAM_TOKEN or not OPENAI_API_KEY or not GOOGLE_MAPS_API_KEY:
-    raise RuntimeError("Один или несколько ключей (TELEGRAM_TOKEN, OPENAI_API_KEY, GOOGLE_MAPS_API_KEY) отсутствуют в .env")
-
-openai.api_key = OPENAI_API_KEY
-
 # Логирование
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
