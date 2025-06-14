@@ -222,16 +222,16 @@ async def search_with_google(update: Update, context: ContextTypes.DEFAULT_TYPE,
     """Поиск мест через Google Places API с фильтрацией по расстоянию."""
     try:
         place_queries = [
-            {"label": "🌳 Прогулка/Дост.", "type": "tourist_attraction", "keyword": "парк|достопримечательность|отдых", "radius": 5000},
+            {"label": "🌳 Прогулка/Дост.", "type": "tourist_attraction", "keyword": "парк|достопримечательность|отдых", "radius": 15000},
             {"label": "🌳 Прогулка/Дост.", "type": "park", "keyword": "", "radius": 5000},
-            {"label": "🚛 Парковка для фур", "type": "parking", "keyword": "грузовая парковка|truck parking", "radius": 10000},
+            {"label": "🚛 Парковка для фур", "type": "parking", "keyword": "грузовая парковка|truck parking", "radius": 30000},
             {"label": "🏨 Отель/Мотель", "type": "lodging", "keyword": "мотель|гостиница|hotel|motel", "radius": 10000},
             {"label": "🛒 Магазин (продукты)", "type": "supermarket", "keyword": "", "radius": 5000},
             {"label": "🛒 Магазин (продукты)", "type": "convenience_store", "keyword": "", "radius": 5000},
             {"label": "🧺 Прачечная", "type": "laundry", "keyword": "прачечная|самообслуживание|laundromat", "radius": 5000},
             {"label": "🧺 Прачечная", "type": None, "keyword": "прачечная самообслуживания|self-service laundry", "radius": 5000},
-            {"label": "🚿 Душевые", "type": "gas_station", "keyword": "truck stop|душевые|душ для дальнобойщиков", "radius": 10000},
-            {"label": "🚿 Душевые", "type": None, "keyword": "душ|сауна|truck stop showers", "radius": 10000},
+            {"label": "🚿 Душевые", "type": "gas_station", "keyword": "truck stop|душевые|душ для дальнобойщиков", "radius": 20000},
+            {"label": "🚿 Душевые", "type": None, "keyword": "душ|сауна|truck stop showers", "radius": 20000},
         ]
 
         found_results_grouped = {}
