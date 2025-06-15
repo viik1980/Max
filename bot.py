@@ -10,7 +10,7 @@ import requests
 
 # Простая память между сообщениями
 context_history = []
-MAX_TURNS = 6
+MAX_TURNS = 2
 
 # Загрузка .env
 load_dotenv()
