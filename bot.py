@@ -11,7 +11,8 @@ import requests
 # Простая память между сообщениями
 context_history = []
 MAX_TURNS = 2
-MAX_DISTANCE_KM = 50  # Максимальное расстояние для результатов (в км)
+MAX_DISTANCE_KM = 50        # Максимальное расстояние для результатов (в км)
+REQUEST_TIMEOUT = 15        # Таймаут для внешних HTTP запросов в секундах
 
 # Загрузка .env
 load_dotenv()
@@ -159,40 +160,201 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Обработка геолокации
 async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    lat = update.message.location.latitude
-    lon = update.message.location.longitude
-    await update.message.reply_text("📍 Получил координаты. Ищу ближайшие парки...")
-
-    search_type = "паркинг, продукты"
-    url = f"https://maps.googleapis.com/maps/api/place/nearbysearch/json?location={lat},{lon}&radius=5000&type=park&key={GOOGLE_MAPS_API_KEY}"
-
+    """Обрабатывает полученные координаты и предлагает выбор источника поиска."""
     try:
-        res = requests.get(url)
-        data = res.json()
-        if data.get("results"):
-            buttons = []
-            reply = "🏞️ Нашёл такие места рядом с тобой:\n\n"
-            for place in data["results"][:5]:
-                name = place["name"]
-                address = place.get("vicinity", "Без адреса")
-                loc = place["geometry"]["location"]
-                dest_lat, dest_lon = loc["lat"], loc["lng"]
-                maps_url = f"https://www.google.com/maps/dir/?api=1&destination={dest_lat},{dest_lon}"
-                reply += f"• {name}\n📍 {address}\n🔗 [Маршрут]({maps_url})\n\n"
-                buttons.append([InlineKeyboardButton(text=f"➡️ {name}", url=maps_url)])
-
-            await update.message.reply_markdown(reply, reply_markup=InlineKeyboardMarkup(buttons))
-        else:
-            await update.message.reply_text("😔 Ничего не нашёл поблизости.")
+        lat = update.message.location.latitude
+        lon = update.message.location.longitude
+        context.user_data['last_location'] = (lat, lon)
+        await update.message.reply_text(
+            "📍 Получил координаты. Выбери источник поиска:",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("Google Maps", callback_data=f"search_google|{lat}|{lon}")],
+                [InlineKeyboardButton("OpenStreetMap", callback_data=f"search_overpass|{lat}|{lon}")]
+            ])
+        )
     except Exception as e:
-        logging.error(f"Ошибка при запросе Google Maps API: {e}")
-        await update.message.reply_text("❌ Ошибка при поиске. Попробуй позже.")
+        logger.error(f"Ошибка при обработке геолокации: {e}", exc_info=True)
+        await update.message.reply_text("❌ Ошибка при обработке координат.")
 
-# Запуск бота
+async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обрабатывает выбор источника поиска."""
+    query = update.callback_query
+    await query.answer()
+    try:
+        action, lat_str, lon_str = query.data.split("|")
+        lat, lon = float(lat_str), float(lon_str)
+        source_name = "Google Maps" if action == 'search_google' else "OpenStreetMap"
+        await query.edit_message_text(text=f"Ищу через {source_name}...")
+
+        if action == "search_google":
+            await search_with_google(query, context, lat, lon)
+        elif action == "search_overpass":
+            await search_with_overpass(query, context, lat, lon)
+    except (ValueError, IndexError) as e:
+        logger.error(f"Ошибка разбора callback_data: {query.data}, {e}")
+        await query.edit_message_text(text="Произошла ошибка, попробуйте снова.")
+
+# --- Поиск через Google API ---
+async def search_with_google(query, context: ContextTypes.DEFAULT_TYPE, lat: float, lon: float):
+    """Поиск мест через Google Places API с фильтрацией по расстоянию и пагинацией."""
+    try:
+        place_queries = [
+            {"label": "🌳 Парки", "type": "park", "keyword": "park", "radius": 20000},
+            {"label": "🏛 Достопримечательности", "type": "tourist_attraction", "keyword": "tourist attraction|museum|landmark", "radius": 20000},
+            {"label": "🚛 Парковка для фур", "keyword": "грузовая парковка|truck parking", "radius": 10000},
+            {"label": "🏨 Отель/Мотель", "type": "lodging", "keyword": "мотель|гостиница|hotel|motel", "radius": 10000},
+            {"label": "🛒 Магазин", "type": "supermarket", "radius": 5000},
+            {"label": "🧺 Прачечная", "keyword": "прачечная самообслуживания|self-service laundry", "radius": 5000},
+            {"label": "🚿 Душевые", "keyword": "душ|сауна|truck stop showers", "radius": 10000},
+        ]
+        found_results_grouped = {}
+        base_url = "https://maps.googleapis.com/maps/api/place/"
+        user_location = (lat, lon)
+
+        for query_info in place_queries:
+            label = query_info["label"]
+            place_type = query_info.get("type")
+            keyword = query_info.get("keyword")
+            radius = query_info.get("radius", 10000)
+            next_page_token = None
+
+            urls = []
+            if place_type:
+                urls.append(
+                    f"{base_url}nearbysearch/json"
+                    f"?location={lat},{lon}&type={place_type}&rankby=distance&key={GOOGLE_MAPS_API_KEY}"
+                )
+            if keyword:
+                query_str = urllib.parse.quote(keyword)
+                urls.append(
+                    f"{base_url}textsearch/json"
+                    f"?query={query_str}&location={lat},{lon}&radius={radius}&key={GOOGLE_MAPS_API_KEY}&language=ru"
+                )
+
+            for url in urls:
+                while True:
+                    try:
+                        if next_page_token:
+                            paginated_url = f"{url}&pagetoken={next_page_token}"
+                            logger.info(f"Google API пагинация для {label}: {paginated_url}")
+                            res = requests.get(paginated_url, timeout=REQUEST_TIMEOUT)
+                        else:
+                            logger.info(f"Google API запрос для {label}: {url}")
+                            res = requests.get(url, timeout=REQUEST_TIMEOUT)
+                        res.raise_for_status()
+                        data = res.json()
+                        logger.info(f"Статус Google API для {label}: {data.get('status')}")
+                        logger.debug(f"Сырой ответ Google API для {label}: {data}")
+
+                        if data.get("status") != "OK":
+                            logger.warning(f"Google API вернул статус {data.get('status')} для {label}: {data.get('error_message', '')}")
+                            break
+
+                        if data.get("results"):
+                            if label not in found_results_grouped:
+                                found_results_grouped[label] = []
+                            for place in data["results"][:15]:
+                                name = place.get("name")
+                                address = place.get("vicinity", "Без адреса")
+                                loc = place["geometry"]["location"]
+                                place_location = (loc["lat"], loc["lng"])
+                                distance_km = geodesic(user_location, place_location).kilometers
+
+                                if distance_km <= MAX_DISTANCE_KM:
+                                    place_id = place.get("place_id")
+                                    maps_url = f"https://www.google.com/maps/dir/?api=1&origin={lat},{lon}&destination={loc['lat']},{loc['lng']}&travelmode=driving"
+                                    if (name, address) not in [(item[0], item[1]) for item in found_results_grouped[label]]:
+                                        found_results_grouped[label].append((name, address, maps_url, distance_km))
+
+                        next_page_token = data.get("next_page_token")
+                        if not next_page_token:
+                            break
+                        await asyncio.sleep(2)
+
+                    except requests.exceptions.RequestException as e:
+                        logger.error(f"Ошибка HTTP запроса Google API для {label}: {e}")
+                        break
+                    except Exception as e:
+                        logger.error(f"Ошибка обработки данных Google API для {label}: {e}")
+                        break
+
+        messages, buttons = format_places_reply(found_results_grouped, "Google Maps")
+        for msg in messages:
+            await query.message.reply_markdown(msg, reply_markup=buttons if msg == messages[-1] else None)
+    except Exception as e:
+        logger.error(f"Ошибка поиска Google API: {e}", exc_info=True)
+        await query.message.reply_text("❌ Ошибка при поиске через Google Maps.")
+
+# --- Поиск через Overpass API ---
+async def search_with_overpass(query, context: ContextTypes.DEFAULT_TYPE, lat: float, lon: float):
+    """Поиск мест через Overpass API (OpenStreetMap)."""
+    try:
+        place_queries = [
+            {"label": "🌳 Парки", "query": f'node["leisure"="park"](around:10000,{lat},{lon});'},
+            {"label": "🏛 Достопримечательности", "query": f'node["tourism"~"attraction|museum|monument"](around:10000,{lat},{lon});'},
+            {"label": "🚛 Парковка для фур", "query": f'node["highway"="services"]["access"="truck"](around:10000,{lat},{lon});'},
+            {"label": "🏨 Отель/Мотель", "query": f'node["tourism"~"hotel|motel"](around:10000,{lat},{lon});'},
+            {"label": "🛒 Магазин", "query": f'node["shop"="supermarket"](around:5000,{lat},{lon});'},
+            {"label": "🧺 Прачечная", "query": f'node["shop"="laundry"](around:5000,{lat},{lon});'},
+            {"label": "🚿 Душевые", "query": f'node["amenity"="shower"](around:10000,{lat},{lon});'},
+        ]
+        found_results_grouped = {}
+        overpass_url = "http://overpass-api.de/api/interpreter"
+        user_location = (lat, lon)
+
+        for query_info in place_queries:
+            label = query_info["label"]
+            overpass_query = f"[out:json];{query_info['query']}out body;"
+
+            try:
+                logger.info(f"Overpass API запрос для {label}: {overpass_query}")
+                res = requests.post(overpass_url, data={"data": overpass_query}, timeout=REQUEST_TIMEOUT)
+                res.raise_for_status()
+                data = res.json()
+                logger.info(f"Результаты Overpass API для {label}: {data.get('elements', [])}")
+
+                if data.get("elements"):
+                    if label not in found_results_grouped:
+                        found_results_grouped[label] = []
+                    for element in data["elements"][:10]:
+                        name = element["tags"].get("name", "Без названия")
+                        address_parts = []
+                        for tag in ["addr:street", "addr:housenumber", "addr:city", "addr:country"]:
+                            if tag in element["tags"]:
+                                address_parts.append(element["tags"][tag])
+                        address = ", ".join(address_parts) if address_parts else "Без адреса"
+                        el_lat, el_lon = element["lat"], element["lon"]
+                        place_location = (el_lat, el_lon)
+                        distance_km = geodesic(user_location, place_location).kilometers
+
+                        if distance_km <= MAX_DISTANCE_KM:
+                            maps_url = f"https://www.google.com/maps/dir/?api=1&origin={lat},{lon}&destination={el_lat},{el_lon}&travelmode=driving"
+                            if (name, address) not in [(item[0], item[1]) for item in found_results_grouped[label]]:
+                                found_results_grouped[label].append((name, address, maps_url, distance_km))
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Ошибка HTTP запроса Overpass API для {label}: {e}")
+            except Exception as e:
+                logger.error(f"Ошибка обработки данных Overpass API для {label}: {e}")
+
+        messages, buttons = format_places_reply(found_results_grouped, "OpenStreetMap")
+        for msg in messages:
+            await query.message.reply_markdown(msg, reply_markup=buttons if msg == messages[-1] else None)
+    except Exception as e:
+        logger.error(f"Ошибка поиска Overpass API: {e}", exc_info=True)
+        await query.message.reply_text("❌ Ошибка при поиске через OpenStreetMap.")
+
+# --- Запуск бота ---
 if __name__ == '__main__':
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.add_handler(MessageHandler(filters.VOICE, handle_voice))
-    app.add_handler(MessageHandler(filters.LOCATION, handle_location))
-    app.run_polling()
+    if not all([TELEGRAM_TOKEN, OPENAI_API_KEY, GOOGLE_MAPS_API_KEY]):
+        logger.critical("Не установлены все необходимые переменные окружения!")
+    else:
+        app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+        
+        app.add_handler(CommandHandler("start", start))
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+        app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+        app.add_handler(MessageHandler(filters.LOCATION, handle_location))
+        app.add_handler(CallbackQueryHandler(handle_callback_query))
+        
+        logger.info("Бот запущен. Ожидание сообщений...")
+        app.run_polling()
