@@ -329,7 +329,7 @@ async def search_with_google(query, context: ContextTypes.DEFAULT_TYPE, lat: flo
                             res = requests.get(paginated_url, timeout=REQUEST_TIMEOUT)
                         else:
                             logger.info(f"Google API запрос для {label}: {url}")
-                            res = requests.get(url, timeout=REQUEST_TIMEOUT)
+                            res = requests.get(url, timeout=30)
                         res.raise_for_status()
                         data = res.json()
                         logger.info(f"Статус Google API для {label}: {data.get('status')}")
