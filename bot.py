@@ -37,21 +37,23 @@ try:
         SYSTEM_PROMPT = f.read()
 except FileNotFoundError:
     SYSTEM_PROMPT = "Ты — Макс. Диспетчер, помощник и навигатор по жизни в рейсе."
-    logger.warning("Файл prompt.txt не найден. Используется системный промт по умолчанию.")
 
-# --- Функции для работы с базой знаний ---
+# Загрузка базы знаний по ключевым словам
 def load_relevant_knowledge(user_input: str) -> str:
-    """
-    Загружает релевантную информацию из файлов базы знаний
-    на основе ключевых слов в вводе пользователя.
-    """
     keywords_map = {
-        "отдых": "Rezim_RTO.md", "пауз": "Rezim_RTO.md", "смен": "Rezim_RTO.md",
-        "тахограф": "4_tahograf_i_karty.md", "карта": "4_tahograf_i_karty.md",
-        "поезд": "ferry_routes.md", "паром": "ferry_routes.md",
-        "цмр": "CMR.md", "документ": "CMR.md",
-        "комфорт": "11_komfort_i_byt.md", "питание": "12_pitanie_i_energiya.md"
+        "отдых": "Rezim_RTO.md",
+        "пауз": "Rezim_RTO.md",
+        "смен": "Rezim_RTO.md",
+        "тахограф": "4_tahograf_i_karty.md",
+        "карта": "4_tahograf_i_karty.md",
+        "поезд": "ferry_routes.md",
+        "паром": "ferry_routes.md",
+        "цмр": "CMR.md",
+        "документ": "CMR.md",
+        "комфорт": "11_komfort_i_byt.md",
+        "питание": "12_pitanie_i_energiya.md"
     }
+
     selected_files = set()
     lowered = user_input.lower()
     for keyword, filename in keywords_map.items():
@@ -62,15 +64,11 @@ def load_relevant_knowledge(user_input: str) -> str:
     for filename in sorted(selected_files):
         path = os.path.join("knowledge", filename)
         if os.path.exists(path):
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    content = f.read().strip()
-                    if content:
-                        texts.append(f"📘 {filename}:\n{content}\n")
-            except Exception as e:
-                logger.error(f"Ошибка чтения файла базы знаний {filename}: {e}")
-        else:
-            logger.warning(f"Файл базы знаний не найден: {path}")
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+                if content:
+                    texts.append(f"📘 {filename}:{content}\n")
+
     return "\n".join(texts) or ""
 
 # --- Форматирование ответа ---
