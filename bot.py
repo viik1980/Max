@@ -343,9 +343,9 @@ async def search_with_google(query, context: ContextTypes.DEFAULT_TYPE, lat: flo
                         logger.error(f"Ошибка обработки данных Google API для {label}: {e}")
                         break
 
-        messages, buttons = format_places_reply(found_results_grouped, "Google Maps")
-        for msg in messages:
-            await query.message.reply_markdown(msg, reply_markup=buttons if msg == messages[-1] else None)
+        messages, button_groups = format_places_reply(found_results_grouped, "Google Maps")
+        for msg, buttons in zip(messages, button_groups):
+            await query.message.reply_markdown(msg, reply_markup=InlineKeyboardMarkup(buttons))
     except Exception as e:
         logger.error(f"Ошибка поиска Google API: {e}", exc_info=True)
         await query.message.reply_text("❌ Ошибка при поиске через Google Maps.")
