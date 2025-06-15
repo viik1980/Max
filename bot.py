@@ -351,6 +351,7 @@ async def search_with_google(query, context: ContextTypes.DEFAULT_TYPE, lat: flo
         await query.message.reply_text("❌ Ошибка при поиске через Google Maps.")
 
 # --- Поиск через Overpass API ---
+
 async def search_with_overpass(query, context: ContextTypes.DEFAULT_TYPE, lat: float, lon: float):
     """Поиск мест через Overpass API (OpenStreetMap)."""
     try:
@@ -401,13 +402,12 @@ async def search_with_overpass(query, context: ContextTypes.DEFAULT_TYPE, lat: f
             except Exception as e:
                 logger.error(f"Ошибка обработки данных Overpass API для {label}: {e}")
 
-        messages, buttons = format_places_reply(found_results_grouped, "OpenStreetMap")
-        for msg in messages:
-            await query.message.reply_markdown(msg, reply_markup=buttons if msg == messages[-1] else None)
+        messages, button_groups = format_places_reply(found_results_grouped, "OpenStreetMap")
+        for msg, buttons in zip(messages, button_groups):
+            await query.message.reply_markdown(msg, reply_markup=InlineKeyboardMarkup(buttons))
     except Exception as e:
         logger.error(f"Ошибка поиска Overpass API: {e}", exc_info=True)
         await query.message.reply_text("❌ Ошибка при поиске через OpenStreetMap.")
-
 # --- Запуск бота ---
 if __name__ == '__main__':
     if not all([TELEGRAM_TOKEN, OPENAI_API_KEY, GOOGLE_MAPS_API_KEY]):
