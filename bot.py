@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 # --- Глобальные переменные и загрузка окружения ---
 MAX_TURNS_FOR_SUMMARY = 10  # Сколько последних сообщений использовать для создания сводки
 MAX_DISTANCE_KM = 50        # Максимальное расстояние для результатов (в км)
-REQUEST_TIMEOUT = 15        # Таймаут для внешних HTTP запросов в секундах
+REQUEST_TIMEOUT = 30        # Таймаут для внешних HTTP запросов в секундах (унифицирован)
 
 # Загрузка .env
 load_dotenv()
@@ -323,19 +323,15 @@ async def search_with_google(query, context: ContextTypes.DEFAULT_TYPE, lat: flo
             for url in urls:
                 while True:
                     try:
-                        if next_page_token:
-                            paginated_url = f"{url}&pagetoken={next_page_token}"
-                            logger.info(f"Google API пагинация для {label}: {paginated_url}")
-                            res = requests.get(paginated_url, timeout=REQUEST_TIMEOUT)
-                        else:
-                            logger.info(f"Google API запрос для {label}: {url}")
-                            res = requests.get(url, timeout=30)
+                        request_url = f"{url}&pagetoken={next_page_token}" if next_page_token else url
+                        logger.info(f"Google API запрос для {label}: {request_url}")
+                        res = requests.get(request_url, timeout=REQUEST_TIMEOUT)
                         res.raise_for_status()
                         data = res.json()
                         logger.info(f"Статус Google API для {label}: {data.get('status')}")
                         logger.debug(f"Сырой ответ Google API для {label}: {data}")
 
-                        if data.get("status") != "OK":
+                        if data.get("status") in ["OVER_QUERY_LIMIT", "ZERO_RESULTS", "REQUEST_DENIED"]:
                             logger.warning(f"Google API вернул статус {data.get('status')} для {label}: {data.get('error_message', '')}")
                             break
 
@@ -343,18 +339,18 @@ async def search_with_google(query, context: ContextTypes.DEFAULT_TYPE, lat: flo
                             if label not in found_results_grouped:
                                 found_results_grouped[label] = []
                             for place in data["results"][:15]:
-                                name = place.get("name")
+                                name = place.get("name", "Без названия")
                                 address = place.get("vicinity", "Без адреса")
                                 loc = place["geometry"]["location"]
                                 place_location = (loc["lat"], loc["lng"])
                                 distance_km = geodesic(user_location, place_location).kilometers
-                                rating = place.get("rating")  # Получаем рейтинг, если доступен
+                                rating = place.get("rating")  # Может быть None
 
                                 if distance_km <= MAX_DISTANCE_KM:
-                                    place_id = place.get("place_id")
                                     maps_url = f"https://www.google.com/maps/dir/?api=1&origin={lat},{lon}&destination={loc['lat']},{loc['lng']}&travelmode=driving"
-                                    if (name, address) not in [(item[0], item[1]) for item in found_results_grouped[label]]:
-                                        found_results_grouped[label].append((name, address, maps_url, distance_km, rating))
+                                    unique_key = (name, address)
+                                    if unique_key not in [(item[0], item[1]) for item in found_results_grouped[label]]:
+                                        found_results_grouped[label].append((name, address, maps_url, distance_km, rating if rating else None))
 
                         next_page_token = data.get("next_page_token")
                         if not next_page_token:
@@ -376,7 +372,7 @@ async def search_with_google(query, context: ContextTypes.DEFAULT_TYPE, lat: flo
                 await query.message.reply_markdown(msg, reply_markup=InlineKeyboardMarkup(buttons))
     except Exception as e:
         logger.error(f"Ошибка поиска Google API: {e}", exc_info=True)
-        await query.message.reply_text("❌ Ошибка при поиске через Google Maps.")
+        await query.message.reply_text("❌ Ошибка при поиске через Google Maps. Возможно, превышен лимит запросов или проблема с подключением.")
 
 # --- Поиск через Overpass API ---
 async def search_with_overpass(query, context: ContextTypes.DEFAULT_TYPE, lat: float, lon: float):
