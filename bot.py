@@ -18,8 +18,8 @@ import asyncio
 from urllib.parse import quote as urllib_quote
 from geopy.distance import geodesic
 
-# Простая память между сообщениями
-context_history = []
+# Простая память между сообщениями (общая для всех пользователей — будет заменена)
+user_contexts = {}  # {user_id: [{"role": "user", "content": "..."}, ...]}
 MAX_TURNS = 2
 MAX_DISTANCE_KM = 50        # Максимальное расстояние для результатов (в км)
 REQUEST_TIMEOUT = 15        # Таймаут для внешних HTTP запросов в секундах
@@ -47,7 +47,10 @@ except FileNotFoundError:
 # Загрузка базы знаний по ключевым словам
 def load_relevant_knowledge(user_input: str) -> str:
     keywords_map = {
-        "отдых", "смена", "пауза", "разрыв паузы" : "Rezim_RTO.md",
+        "отдых": "Rezim_RTO.md",
+        "смена": "Rezim_RTO.md",
+        "пауза": "Rezim_RTO.md",
+        "разрыв паузы": "Rezim_RTO.md",
         "тахограф": "4_tahograf_i_karty.md",
         "карта": "4_tahograf_i_karty.md",
         "поезд": "ferry_routes.md",
@@ -75,7 +78,7 @@ def load_relevant_knowledge(user_input: str) -> str:
 # GPT-запрос
 async def ask_gpt(messages):
     try:
-        return openai.ChatCompletion.create(model="gpt-4o", messages=messages)
+        return openai.ChatCompletion.create(model="GPT-4.5-preview", messages=messages)
     except Exception as e:
         logging.warning(f"GPT-4.5-preview недоступен, fallback: {e}")
         try:
@@ -94,6 +97,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user_input:
         await update.message.reply_text("Чем могу помочь?")
         return
+
+    user_id = update.effective_user.id
+    if user_id not in user_contexts:
+        user_contexts[user_id] = []
+
     lowered = user_input.lower()
 
     # Генерация изображения
@@ -109,16 +117,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
     # Контекст
-    context_history.append({"role": "user", "content": user_input})
+    user_contexts[user_id].append({"role": "user", "content": user_input})
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     kb_snippet = load_relevant_knowledge(user_input)
     if kb_snippet:
         messages.append({"role": "system", "content": "📚 База знаний:\n" + kb_snippet})
-    messages += context_history[-MAX_TURNS:]
+    messages += user_contexts[user_id][-MAX_TURNS:]
     response = await ask_gpt(messages)
     if response:
         assistant_reply = response.choices[0].message.content.strip()
-        context_history.append({"role": "assistant", "content": assistant_reply})
+        user_contexts[user_id].append({"role": "assistant", "content": assistant_reply})
         await update.message.reply_text(assistant_reply)
     else:
         await update.message.reply_text("❌ Ошибка при запросе к GPT. Попробуй позже.")
@@ -137,16 +145,21 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("🎧 Не смог разобрать голос. Попробуй снова.")
             return
         await update.message.reply_text(f"Ты сказал: {user_text}")
-        context_history.append({"role": "user", "content": user_text})
+
+        user_id = update.effective_user.id
+        if user_id not in user_contexts:
+            user_contexts[user_id] = []
+
+        user_contexts[user_id].append({"role": "user", "content": user_text})
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         kb_snippet = load_relevant_knowledge(user_text)
         if kb_snippet:
             messages.append({"role": "system", "content": "📚 База знаний:\n" + kb_snippet})
-        messages += context_history[-MAX_TURNS:]
+        messages += user_contexts[user_id][-MAX_TURNS:]
         response = await ask_gpt(messages)
         if response:
             assistant_reply = response.choices[0].message.content.strip()
-            context_history.append({"role": "assistant", "content": assistant_reply})
+            user_contexts[user_id].append({"role": "assistant", "content": assistant_reply})
             await update.message.reply_text(assistant_reply)
         else:
             await update.message.reply_text("❌ Ошибка при запросе к GPT. Попробуй позже.")
@@ -172,6 +185,7 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"Ошибка при обработке геолокации: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при обработке координат.")
 
+# Обработка кнопок обратного вызова
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает выбор источника поиска."""
     query = update.callback_query
@@ -262,7 +276,6 @@ async def search_with_google(query, context: ContextTypes.DEFAULT_TYPE, lat: flo
                     except Exception as e:
                         logging.error(f"Ошибка обработки данных Google API для {label}: {e}")
                         break
-
         messages, buttons = format_places_reply(found_results_grouped, "Google Maps")
         for msg in messages:
             await query.message.reply_markdown(msg, reply_markup=buttons if msg == messages[-1] else None)
@@ -327,10 +340,8 @@ async def search_with_overpass(query, context: ContextTypes.DEFAULT_TYPE, lat: f
 def format_places_reply(results, source):
     messages = []
     buttons = []
-
     if not results:
         return ["❌ Ничего не найдено."], None
-
     for label, places in results.items():
         if places:
             msg = f"*{label}* ({source}):\n"
