@@ -74,34 +74,50 @@ def load_relevant_knowledge(user_input: str) -> str:
     return "\n".join(texts) or ""
 
 # --- Форматирование ответа ---
-def format_places_reply(places_grouped: dict, source_name: str) -> (list, list):
-    """Форматирует ответ с найденными местами, разделяя на части по 4000 символов."""
+def format_places_reply(places_grouped: dict, source_name: str) -> tuple[list[str], list[list[list[InlineKeyboardButton]]]]:
+    """Форматирует ответ с найденными местами в виде кликабельных кнопок с иконками."""
     if not places_grouped:
-        return [f"😔 Ничего не нашёл поблизости ({source_name})."], None
+        logger.debug(f"Places grouped is empty for {source_name}")
+        return [f"😔 Ничего не нашёл поблизости ({source_name})."], []
 
     messages = []
-    current_message = f"📌 Нашёл такие места рядом ({source_name}):\n\n"
-    buttons = []
+    button_groups = []
+    buttons_per_message = 10  # Ограничение на количество кнопок в одном сообщении
+    current_message = f"📍 Места рядом ({source_name}):"
 
+    # Иконки для категорий
+    category_icons = {
+        "🌳 Парки": "🌳",
+        "🏛 Достопримечательности": "🏛",
+        "🚛 Парковка для фур": "🚛",
+        "🏨 Отель/Мотель": "🏨",
+        "🛒 Магазин": "🛒",
+        "🧺 Прачечная": "🧺",
+        "🚿 Душевые": "🚿"
+    }
+
+    all_buttons = []
     for label, places in places_grouped.items():
         places.sort(key=lambda x: x[3])  # Сортировка по расстоянию
         places = places[:5]  # Ограничиваем до 5 мест на категорию
-        category_text = f"*{label}*:\n"
+        icon = category_icons.get(label, "📍")  # Иконка по умолчанию
         for name, address, url, distance_km in places:
-            place_text = f"  • *{name}* ({distance_km:.1f} км)\n    📍 `{address}`\n"
-            # Проверяем, не превысит ли добавление текста лимит
-            if len(current_message) + len(category_text) + len(place_text) > 4000:
-                messages.append(current_message)
-                current_message = f"📌 Продолжение ({source_name}):\n\n"
-            category_text += place_text
-            buttons.append([InlineKeyboardButton(text=f"{name} ({distance_km:.1f} км)", url=url)])
-        if category_text != f"*{label}*:\n":  # Добавляем только если есть места
-            current_message += category_text + "\n"
+            button_text = f"{icon} {name} ({distance_km:.1f} км)"
+            all_buttons.append([InlineKeyboardButton(text=button_text, url=url)])
 
-    if current_message != f"📌 Продолжение ({source_name}):\n\n":
+    logger.debug(f"Total buttons created: {len(all_buttons)} for {source_name}")
+
+    if not all_buttons:
+        return [f"😔 Ничего не нашёл поблизости ({source_name})."], []
+
+    # Разбиваем кнопки на группы
+    for i in range(0, len(all_buttons), buttons_per_message):
+        button_group = all_buttons[i:i + buttons_per_message]
+        button_groups.append(button_group)
         messages.append(current_message)
 
-    return messages, InlineKeyboardMarkup(buttons) if buttons else None
+    logger.debug(f"Messages: {len(messages)}, Button groups: {len(button_groups)} for {source_name}")
+    return messages, button_groups
 
 # --- Функции для взаимодействия с GPT ---
 async def summarize_history(history: list) -> str:
@@ -344,14 +360,16 @@ async def search_with_google(query, context: ContextTypes.DEFAULT_TYPE, lat: flo
                         break
 
         messages, button_groups = format_places_reply(found_results_grouped, "Google Maps")
-        for msg, buttons in zip(messages, button_groups):
-            await query.message.reply_markdown(msg, reply_markup=InlineKeyboardMarkup(buttons))
+        if not button_groups:
+            await query.message.reply_markdown(messages[0])
+        else:
+            for msg, buttons in zip(messages, button_groups):
+                await query.message.reply_markdown(msg, reply_markup=InlineKeyboardMarkup(buttons))
     except Exception as e:
         logger.error(f"Ошибка поиска Google API: {e}", exc_info=True)
         await query.message.reply_text("❌ Ошибка при поиске через Google Maps.")
 
 # --- Поиск через Overpass API ---
-
 async def search_with_overpass(query, context: ContextTypes.DEFAULT_TYPE, lat: float, lon: float):
     """Поиск мест через Overpass API (OpenStreetMap)."""
     try:
@@ -365,7 +383,8 @@ async def search_with_overpass(query, context: ContextTypes.DEFAULT_TYPE, lat: f
             {"label": "🚿 Душевые", "query": f'node["amenity"="shower"](around:10000,{lat},{lon});'},
         ]
         found_results_grouped = {}
-        overpass_url = "http://overpass-api.de/api/interpreter"
+        overpass_url = "http://overpass-api/"
+        user_location = []
         user_location = (lat, lon)
 
         for query_info in place_queries:
@@ -388,14 +407,16 @@ async def search_with_overpass(query, context: ContextTypes.DEFAULT_TYPE, lat: f
                         for tag in ["addr:street", "addr:housenumber", "addr:city", "addr:country"]:
                             if tag in element["tags"]:
                                 address_parts.append(element["tags"][tag])
-                        address = ", ".join(address_parts) if address_parts else "Без адреса"
-                        el_lat, el_lon = element["lat"], element["lon"]
+                        address = ", ".join(address_parts) if address_parts else "Без адресации"
+                        el_lat = element["lat"]
+                        el_lon = element["lon"]
                         place_location = (el_lat, el_lon)
                         distance_km = geodesic(user_location, place_location).kilometers
 
                         if distance_km <= MAX_DISTANCE_KM:
                             maps_url = f"https://www.google.com/maps/dir/?api=1&origin={lat},{lon}&destination={el_lat},{el_lon}&travelmode=driving"
                             if (name, address) not in [(item[0], item[1]) for item in found_results_grouped[label]]:
+                                logger.debug(f"Добавлено место: {name}, {distance_km:.2f} км для {label}")
                                 found_results_grouped[label].append((name, address, maps_url, distance_km))
             except requests.exceptions.RequestException as e:
                 logger.error(f"Ошибка HTTP запроса Overpass API для {label}: {e}")
@@ -403,16 +424,22 @@ async def search_with_overpass(query, context: ContextTypes.DEFAULT_TYPE, lat: f
                 logger.error(f"Ошибка обработки данных Overpass API для {label}: {e}")
 
         messages, button_groups = format_places_reply(found_results_grouped, "OpenStreetMap")
-        for msg, buttons in zip(messages, button_groups):
-            await query.message.reply_markdown(msg, reply_markup=InlineKeyboardMarkup(buttons))
+        if not button_groups:
+            await query.message.reply_markdown(messages[0])
+        else:
+            for msg, buttons in zip(messages, button_groups):
+                await query.message.reply_markdown(msg, reply_markup=InlineKeyboardMarkup(buttons))
     except Exception as e:
         logger.error(f"Ошибка поиска Overpass API: {e}", exc_info=True)
         await query.message.reply_text("❌ Ошибка при поиске через OpenStreetMap.")
+
 # --- Запуск бота ---
 if __name__ == '__main__':
-    if not all([TELEGRAM_TOKEN, OPENAI_API_KEY, GOOGLE_MAPS_API_KEY]):
-        logger.critical("Не установлены все необходимые переменные окружения!")
-    else:
+    try:
+        if not all([TELEGRAM_TOKEN, OPENAI_API_KEY, GOOGLE_MAPS_API_KEY]):
+            logger.critical("Не определены все необходимые переменные окружения!")
+            raise ValueError("Missing environment variables")
+        
         app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
         
         app.add_handler(CommandHandler("start", start))
@@ -421,5 +448,8 @@ if __name__ == '__main__':
         app.add_handler(MessageHandler(filters.LOCATION, handle_location))
         app.add_handler(CallbackQueryHandler(handle_callback_query))
         
-        logger.info("Бот запущен. Ожидание сообщений...")
+        logger.info("Бот успешно запущен. Ожидание сообщений...")
         app.run_polling()
+    except Exception as e:
+        logger.critical(f"Критическая ошибка при запуске бота: {e}", exc_info=True)
+        raise
