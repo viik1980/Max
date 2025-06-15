@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 # --- Настройка логирования ---
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=logging.DEBUG  # Установлено на DEBUG для детального анализа
 )
 logger = logging.getLogger(__name__)
 
@@ -74,15 +74,15 @@ def load_relevant_knowledge(user_input: str) -> str:
     return "\n".join(texts) or ""
 
 # --- Форматирование ответа ---
-def format_places_reply(places_grouped: dict, source_name: str) -> tuple[list[str], list[list[list[InlineKeyboardButton]]]]:
-    """Форматирует ответ с найденными местами в виде кликабельных кнопок с иконками."""
+def format_places_reply(places_grouped: dict, source_name: str, ratings=None) -> tuple[list[str], list[list[list[InlineKeyboardButton]]]]:
+    """Форматирует ответ с найденными местами в виде кликабельных кнопок с иконками и рейтингами (если доступны)."""
     if not places_grouped:
         logger.debug(f"Places grouped is empty for {source_name}")
         return [f"😔 Ничего не нашёл поблизости ({source_name})."], []
 
     messages = []
     button_groups = []
-    buttons_per_message = 10  # Ограничение на количество кнопок в одном сообщении
+    buttons_per_message = 5  # Ограничение на 5 кнопок на сообщение
     current_message = f"📍 Места рядом ({source_name}):"
 
     # Иконки для категорий
@@ -100,9 +100,12 @@ def format_places_reply(places_grouped: dict, source_name: str) -> tuple[list[st
     for label, places in places_grouped.items():
         places.sort(key=lambda x: x[3])  # Сортировка по расстоянию
         places = places[:5]  # Ограничиваем до 5 мест на категорию
+        category = label.split()[1] if len(label.split()) > 1 else label  # Извлекаем категорию
         icon = category_icons.get(label, "📍")  # Иконка по умолчанию
-        for name, address, url, distance_km in places:
-            button_text = f"{icon} {name} ({distance_km:.1f} км)"
+        for name, address, url, distance_km, rating=None in places if ratings else [(name, address, url, distance_km) for name, address, url, distance_km in places]:
+            button_text = f"{icon} {category} {name} ({distance_km:.1f} км)"
+            if rating and 0 <= rating <= 5:  # Проверяем, что рейтинг валиден
+                button_text += f" ★{rating:.1f}"
             all_buttons.append([InlineKeyboardButton(text=button_text, url=url)])
 
     logger.debug(f"Total buttons created: {len(all_buttons)} for {source_name}")
@@ -110,7 +113,7 @@ def format_places_reply(places_grouped: dict, source_name: str) -> tuple[list[st
     if not all_buttons:
         return [f"😔 Ничего не нашёл поблизости ({source_name})."], []
 
-    # Разбиваем кнопки на группы
+    # Разбиваем кнопки на группы по 5
     for i in range(0, len(all_buttons), buttons_per_message):
         button_group = all_buttons[i:i + buttons_per_message]
         button_groups.append(button_group)
@@ -340,12 +343,13 @@ async def search_with_google(query, context: ContextTypes.DEFAULT_TYPE, lat: flo
                                 loc = place["geometry"]["location"]
                                 place_location = (loc["lat"], loc["lng"])
                                 distance_km = geodesic(user_location, place_location).kilometers
+                                rating = place.get("rating")  # Получаем рейтинг, если доступен
 
                                 if distance_km <= MAX_DISTANCE_KM:
                                     place_id = place.get("place_id")
                                     maps_url = f"https://www.google.com/maps/dir/?api=1&origin={lat},{lon}&destination={loc['lat']},{loc['lng']}&travelmode=driving"
                                     if (name, address) not in [(item[0], item[1]) for item in found_results_grouped[label]]:
-                                        found_results_grouped[label].append((name, address, maps_url, distance_km))
+                                        found_results_grouped[label].append((name, address, maps_url, distance_km, rating))
 
                         next_page_token = data.get("next_page_token")
                         if not next_page_token:
@@ -374,17 +378,16 @@ async def search_with_overpass(query, context: ContextTypes.DEFAULT_TYPE, lat: f
     """Поиск мест через Overpass API (OpenStreetMap)."""
     try:
         place_queries = [
-            {"label": "🌳 Парки", "query": f'node["leisure"="park"](around:10000,{lat},{lon});'},
-            {"label": "🏛 Достопримечательности", "query": f'node["tourism"~"attraction|museum|monument"](around:10000,{lat},{lon});'},
-            {"label": "🚛 Парковка для фур", "query": f'node["highway"="services"]["access"="truck"](around:10000,{lat},{lon});'},
-            {"label": "🏨 Отель/Мотель", "query": f'node["tourism"~"hotel|motel"](around:10000,{lat},{lon});'},
-            {"label": "🛒 Магазин", "query": f'node["shop"="supermarket"](around:5000,{lat},{lon});'},
-            {"label": "🧺 Прачечная", "query": f'node["shop"="laundry"](around:5000,{lat},{lon});'},
-            {"label": "🚿 Душевые", "query": f'node["amenity"="shower"](around:10000,{lat},{lon});'},
+            {"label": "🌳 Парки", "query": f'node["leisure"="park"](around:20000,{lat},{lon});'},
+            {"label": "🏛 Достопримечательности", "query": f'node["tourism"~"attraction|museum|monument"](around:20000,{lat},{lon});'},
+            {"label": "🚛 Парковка для фур", "query": f'node["highway"="services"]["access"="truck"](around:20000,{lat},{lon});'},
+            {"label": "🏨 Отель/Мотель", "query": f'node["tourism"~"hotel|motel"](around:20000,{lat},{lon});'},
+            {"label": "🛒 Магазин", "query": f'node["shop"="supermarket"](around:10000,{lat},{lon});'},
+            {"label": "🧺 Прачечная", "query": f'node["shop"="laundry"](around:10000,{lat},{lon});'},
+            {"label": "🚿 Душевые", "query": f'node["amenity"="shower"](around:20000,{lat},{lon});'},
         ]
         found_results_grouped = {}
-        overpass_url = "http://overpass-api/"
-        user_location = []
+        overpass_url = "http://overpass-api.de/api/interpreter"
         user_location = (lat, lon)
 
         for query_info in place_queries:
@@ -396,20 +399,19 @@ async def search_with_overpass(query, context: ContextTypes.DEFAULT_TYPE, lat: f
                 res = requests.post(overpass_url, data={"data": overpass_query}, timeout=REQUEST_TIMEOUT)
                 res.raise_for_status()
                 data = res.json()
-                logger.info(f"Результаты Overpass API для {label}: {data.get('elements', [])}")
+                logger.debug(f"Результаты Overpass API для {label}: {data.get('elements', [])}")
 
                 if data.get("elements"):
                     if label not in found_results_grouped:
                         found_results_grouped[label] = []
-                    for element in data["elements"][:10]:
+                    for element in data["elements"][:5]:  # Ограничиваем до 5 мест
                         name = element["tags"].get("name", "Без названия")
                         address_parts = []
                         for tag in ["addr:street", "addr:housenumber", "addr:city", "addr:country"]:
                             if tag in element["tags"]:
                                 address_parts.append(element["tags"][tag])
-                        address = ", ".join(address_parts) if address_parts else "Без адресации"
-                        el_lat = element["lat"]
-                        el_lon = element["lon"]
+                        address = ", ".join(address_parts) if address_parts else "Без адреса"
+                        el_lat, el_lon = element["lat"], element["lon"]
                         place_location = (el_lat, el_lon)
                         distance_km = geodesic(user_location, place_location).kilometers
 
@@ -418,6 +420,7 @@ async def search_with_overpass(query, context: ContextTypes.DEFAULT_TYPE, lat: f
                             if (name, address) not in [(item[0], item[1]) for item in found_results_grouped[label]]:
                                 logger.debug(f"Добавлено место: {name}, {distance_km:.2f} км для {label}")
                                 found_results_grouped[label].append((name, address, maps_url, distance_km))
+                await asyncio.sleep(1)  # Задержка между запросами
             except requests.exceptions.RequestException as e:
                 logger.error(f"Ошибка HTTP запроса Overpass API для {label}: {e}")
             except Exception as e:
