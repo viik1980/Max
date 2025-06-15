@@ -20,8 +20,6 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
 openai.api_key = OPENAI_API_KEY
 
-# --- Инициализация клиентов ---
-client = openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
 
 # Логирование
 logging.basicConfig(
