@@ -166,7 +166,7 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "📍 Получил координаты. Выбери источник поиска:",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("Google Maps", callback_data=f"search_google|{lat}|{lon})"],
+                [InlineKeyboardButton("Google Maps", callback_data=f"search_google|{lat}|{lon}")],
                 [InlineKeyboardButton("OpenStreetMap", callback_data=f"search_overpass|{lat}|{lon}")]
             ])
         )
