@@ -47,9 +47,7 @@ except FileNotFoundError:
 # Загрузка базы знаний по ключевым словам
 def load_relevant_knowledge(user_input: str) -> str:
     keywords_map = {
-        "отдых": "Rezim_RTO.md",
-        "пауз": "Rezim_RTO.md",
-        "смен": "Rezim_RTO.md",
+        "отдых", "смена", "пауза", "разрыв паузы" : "Rezim_RTO.md",
         "тахограф": "4_tahograf_i_karty.md",
         "карта": "4_tahograf_i_karty.md",
         "поезд": "ferry_routes.md",
