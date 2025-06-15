@@ -37,6 +37,14 @@ try:
         SYSTEM_PROMPT = f.read()
 except FileNotFoundError:
     SYSTEM_PROMPT = "Ты — Макс. Диспетчер, помощник и навигатор по жизни в рейсе."
+    logger.warning("Файл prompt.txt не найден. Используется системный промт по умолчанию.")
+
+# Загрузка промта системы для GPT из файла
+try:
+    with open("prompt.txt", "r", encoding="utf-8") as f:
+        SYSTEM_PROMPT = f.read()
+except FileNotFoundError:
+    SYSTEM_PROMPT = "Ты — Макс. Диспетчер, помощник и навигатор по жизни в рейсе."
 
 # Загрузка базы знаний по ключевым словам
 def load_relevant_knowledge(user_input: str) -> str:
@@ -124,7 +132,6 @@ def format_places_reply(places_grouped: dict, source_name: str, ratings=None) ->
 
     logger.debug(f"Messages: {len(messages)}, Button groups: {len(button_groups)} for {source_name}")
     return messages, button_groups
-
 # --- Функции для взаимодействия с GPT ---
 async def summarize_history(history: list) -> str:
     """
