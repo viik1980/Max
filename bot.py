@@ -102,11 +102,16 @@ def format_places_reply(places_grouped: dict, source_name: str, ratings=None) ->
         places = places[:5]  # Ограничиваем до 5 мест на категорию
         category = label.split()[1] if len(label.split()) > 1 else label  # Извлекаем категорию
         icon = category_icons.get(label, "📍")  # Иконка по умолчанию
-        for name, address, url, distance_km, rating=None in places if ratings else [(name, address, url, distance_km) for name, address, url, distance_km in places]:
-            button_text = f"{icon} {category} {name} ({distance_km:.1f} км)"
-            if rating and 0 <= rating <= 5:  # Проверяем, что рейтинг валиден
-                button_text += f" ★{rating:.1f}"
-            all_buttons.append([InlineKeyboardButton(text=button_text, url=url)])
+        if ratings:
+            for name, address, url, distance_km, rating in places:
+                button_text = f"{icon} {category} {name} ({distance_km:.1f} км)"
+                if rating and 0 <= rating <= 5:  # Проверяем, что рейтинг валиден
+                    button_text += f" ★{rating:.1f}"
+                all_buttons.append([InlineKeyboardButton(text=button_text, url=url)])
+        else:
+            for name, address, url, distance_km in places:
+                button_text = f"{icon} {category} {name} ({distance_km:.1f} км)"
+                all_buttons.append([InlineKeyboardButton(text=button_text, url=url)])
 
     logger.debug(f"Total buttons created: {len(all_buttons)} for {source_name}")
 
