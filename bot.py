@@ -45,60 +45,64 @@ except FileNotFoundError:
     SYSTEM_PROMPT = "Ты — Макс. Диспетчер, помощник и навигатор по жизни в рейсе. Используй базу знаний для точных ответов, если она предоставлена."
 
 # --- Загрузка базы знаний по ключевым словам ---
-def load_relevant_knowledge(user_input: str) -> str:
-    keywords_map = {
-        "отдых": "Rezim_RTO.md",
-        "отдохнуть": "Rezim_RTO.md",
-        "смена": "Rezim_RTO.md",
-        "пауза": "Rezim_RTO.md",
-        "разрыв паузы": "Rezim_RTO.md",
-        "тахограф": "4_tahograf_i_karty.md",
-        "карта": "4_tahograf_i_karty.md",
-        "поезд": "ferry_routes.md",
-        "паром": "ferry_routes.md",
-        "цмр": "CMR.md",
-        "документ": "CMR.md",
-        "комфорт": "11_komfort_i_byt.md",
-        "питание": "12_pitanie_i_energiya.md"
-    }
-    selected_files = set()
-    lowered = user_input.lower()
-    logging.info(f"Входной запрос для базы знаний: {lowered}")
-    
-    # Гибкий поиск ключевых слов
-    for keyword, filename in keywords_map.items():
-        if keyword in lowered:
-            logging.info(f"Найдено ключевое слово: {keyword} -> {filename}")
-            selected_files.add(filename)
-    
-    # Если ключевых слов нет, попробовать частичное совпадение
-    if not selected_files:
-        for keyword, filename in keywords_map.items():
-            for word in lowered.split():
-                if keyword in word:
-                    logging.info(f"Частичное совпадение: {keyword} в {word} -> {filename}")
-                    selected_files.add(filename)
-    
-    texts = []
-    knowledge_dir = os.path.join(os.path.dirname(__file__), "knowledge")
-    for filename in sorted(selected_files):
+def split_text_into_chunks(text, chunk_size=500):
+    words = text.split()
+    return [' '.join(words[i:i+chunk_size]) for i in range(0, len(words), chunk_size)]
+
+def load_relevant_knowledge(user_input, knowledge_dir="knowledge"):
+    print("🔹 Проверяю знание для запроса:", user_input)
+    if not os.path.exists(knowledge_dir):
+        print(f"❌ Директория {knowledge_dir} не найдена.")
+        return "❌ База знаний недоступна."
+
+    files = os.listdir(knowledge_dir)
+    print("🔹 Найдены файлы в базе знаний:", files)
+
+    relevant_info = []
+    for filename in files:
         path = os.path.join(knowledge_dir, filename)
-        logging.info(f"Попытка загрузки файла: {path}")
         if os.path.exists(path):
+            size = os.path.getsize(path)
+            print(f"📄 Читаю файл: {filename} (размер: {size} байт)")
+            with open(path, "r", encoding="utf-8") as file:
+                full_text = file.read()
+
+            chunks = split_text_into_chunks(full_text)
+            print(f"📑 Файл разбит на {len(chunks)} фрагментов.")
+
             try:
-                with open(path, "r", encoding="utf-8") as f:
-                    content = f.read().strip()
-                    if content:
-                        texts.append(f"📘 {filename}:\n{content}\n")
-                        logging.info(f"[База знаний] Успешно загружен файл: {filename}")
-                    else:
-                        logging.warning(f"[База знаний] Файл пуст: {filename}")
-            except UnicodeDecodeError as e:
-                logging.error(f"[База знаний] Ошибка кодировки в файле {filename}: {e}")
+                input_embedding = openai.Embedding.create(
+                    input=[user_input],
+                    model="text-embedding-ada-002"
+                )["data"][0]["embedding"]
             except Exception as e:
-                logging.error(f"[База знаний] Ошибка чтения файла {filename}: {e}")
-        else:
-            logging.warning(f"[База знаний] Файл не найден: {path}")
+                print(f"❌ Ошибка при создании embedding запроса: {e}")
+                return "❌ Ошибка обработки запроса."
+
+            for i, chunk in enumerate(chunks):
+                try:
+                    chunk_embedding = openai.Embedding.create(
+                        input=[chunk],
+                        model="text-embedding-ada-002"
+                    )["data"][0]["embedding"]
+                    sim = cosine_similarity(input_embedding, chunk_embedding)
+                    print(f"🔍 [{filename} / chunk {i}] Похожесть: {sim:.4f}")
+                    if sim > 0.3:  # 👈 временно занижаем порог
+                        relevant_info.append(chunk)
+                except Exception as e:
+                    print(f"⚠️ Ошибка при embedding chunk {i}: {e}")
+
+    if relevant_info:
+        print(f"✅ Найдено {len(relevant_info)} релевантных фрагментов.")
+        return "\n\n".join(relevant_info[:5])
+    else:
+        print("❗ Ничего не найдено в базе знаний.")
+        return "📚 База знаний: ничего не найдено."
+
+def cosine_similarity(a, b):
+    a = np.array(a)
+    b = np.array(b)
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
     
     knowledge_text = "\n".join(texts) or "📚 База знаний: ничего не найдено."
     logging.info(f"Итоговый текст базы знаний:\n{knowledge_text}")
