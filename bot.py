@@ -108,10 +108,10 @@ def load_relevant_knowledge(user_input: str) -> str:
 async def ask_gpt(messages):
     logging.info(f"Сообщения для GPT: {messages}")
     try:
-        response = openai.ChatCompletion.create(model="gpt-4o", messages=messages)
+        response = openai.ChatCompletion.create(model="gpt-4.5-preview-2025-02-27", messages=messages)
         return response
     except Exception as e:
-        logging.warning(f"gpt-4o недоступен, fallback: {e}")
+        logging.warning(f"gpt-4.5-preview-2025-02-27 недоступен, fallback: {e}")
         try:
             return openai.ChatCompletion.create(model="gpt-3.5-turbo", messages=messages)
         except Exception as e2:
