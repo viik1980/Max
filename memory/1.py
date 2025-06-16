@@ -84,10 +84,10 @@ async def ask_gpt(messages: list) -> dict:
     Отправляет запрос к GPT-модели, пытаясь сначала GPT-4.5, затем GPT-3.5.
     """
     try:
-        response = await openai.ChatCompletion.acreate(model="gpt-4.5-preview", messages=messages)
+        response = await openai.ChatCompletion.acreate(model="gpt-4-0125-preview", messages=messages)
         return response
     except openai.error.OpenAIError as e:
-        logger.warning(f"GPT-4.5-preview недоступен, fallback к GPT-3.5: {e}")
+        logger.warning(f"gpt-4-0125-preview недоступен, fallback к GPT-3.5: {e}")
         try:
             response = await openai.ChatCompletion.acreate(model="gpt-3.5-turbo-1106", messages=messages)
             return response
