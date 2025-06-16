@@ -42,12 +42,13 @@ try:
     with open("prompt.txt", "r", encoding="utf-8") as f:
         SYSTEM_PROMPT = f.read()
 except FileNotFoundError:
-    SYSTEM_PROMPT = "Ты — Макс. Диспетчер, помощник и навигатор по жизни в рейсе."
+    SYSTEM_PROMPT = "Ты — Макс. Диспетчер, помощник и навигатор по жизни в рейсе. Используй базу знаний для точных ответов, если она предоставлена."
 
 # --- Загрузка базы знаний по ключевым словам ---
 def load_relevant_knowledge(user_input: str) -> str:
     keywords_map = {
         "отдых": "Rezim_RTO.md",
+        "отдохнуть": "Rezim_RTO.md",
         "смена": "Rezim_RTO.md",
         "пауза": "Rezim_RTO.md",
         "разрыв паузы": "Rezim_RTO.md",
@@ -62,33 +63,55 @@ def load_relevant_knowledge(user_input: str) -> str:
     }
     selected_files = set()
     lowered = user_input.lower()
+    logging.info(f"Входной запрос для базы знаний: {lowered}")
+    
+    # Гибкий поиск ключевых слов
     for keyword, filename in keywords_map.items():
         if keyword in lowered:
+            logging.info(f"Найдено ключевое слово: {keyword} -> {filename}")
             selected_files.add(filename)
+    
+    # Если ключевых слов нет, попробовать частичное совпадение
+    if not selected_files:
+        for keyword, filename in keywords_map.items():
+            for word in lowered.split():
+                if keyword in word:
+                    logging.info(f"Частичное совпадение: {keyword} в {word} -> {filename}")
+                    selected_files.add(filename)
+    
     texts = []
+    knowledge_dir = os.path.join(os.path.dirname(__file__), "knowledge")
     for filename in sorted(selected_files):
-        path = os.path.join("knowledge", filename)
+        path = os.path.join(knowledge_dir, filename)
+        logging.info(f"Попытка загрузки файла: {path}")
         if os.path.exists(path):
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     content = f.read().strip()
                     if content:
-                        texts.append(f"📘 {filename}:{content}\n")
-                        logging.info(f"[База знаний] Использован файл: {filename}")
+                        texts.append(f"📘 {filename}:\n{content}\n")
+                        logging.info(f"[База знаний] Успешно загружен файл: {filename}")
                     else:
                         logging.warning(f"[База знаний] Файл пуст: {filename}")
+            except UnicodeDecodeError as e:
+                logging.error(f"[База знаний] Ошибка кодировки в файле {filename}: {e}")
             except Exception as e:
                 logging.error(f"[База знаний] Ошибка чтения файла {filename}: {e}")
         else:
             logging.warning(f"[База знаний] Файл не найден: {path}")
-    return "\n".join(texts) or ""
+    
+    knowledge_text = "\n".join(texts) or "📚 База знаний: ничего не найдено."
+    logging.info(f"Итоговый текст базы знаний:\n{knowledge_text}")
+    return knowledge_text
 
 # --- GPT-запрос ---
 async def ask_gpt(messages):
+    logging.info(f"Сообщения для GPT: {messages}")
     try:
-        return openai.ChatCompletion.create(model="GPT-4.5-preview", messages=messages)
+        response = openai.ChatCompletion.create(model="gpt-4o", messages=messages)
+        return response
     except Exception as e:
-        logging.warning(f"GPT-4.5-preview недоступен, fallback: {e}")
+        logging.warning(f"gpt-4o недоступен, fallback: {e}")
         try:
             return openai.ChatCompletion.create(model="gpt-3.5-turbo", messages=messages)
         except Exception as e2:
@@ -113,8 +136,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_contexts[user_id].append({"role": "user", "content": user_input})
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     kb_snippet = load_relevant_knowledge(user_input)
-    if kb_snippet:
-        messages.append({"role": "system", "content": "📚 База знаний:\n" + kb_snippet})
+    messages.append({"role": "system", "content": f"📚 База знаний:\n{kb_snippet}"})
     messages += user_contexts[user_id][-MAX_TURNS:]
     response = await ask_gpt(messages)
     if response:
@@ -149,8 +171,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_contexts[user_id].append({"role": "user", "content": user_text})
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         kb_snippet = load_relevant_knowledge(user_text)
-        if kb_snippet:
-            messages.append({"role": "system", "content": "📚 База знаний:\n" + kb_snippet})
+        messages.append({"role": "system", "content": f"📚 База знаний:\n{kb_snippet}"})
         messages += user_contexts[user_id][-MAX_TURNS:]
         response = await ask_gpt(messages)
         if response:
@@ -162,10 +183,12 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logging.error(f"[ERROR] Голосовая ошибка: {e}")
         await update.message.reply_text("⚠️ Не смог обработать голос. Возможно, проблема с форматом.")
+    finally:
+        if 'audio_path' in locals():
+            os.unlink(audio_path)  # Удаляем временный файл
 
 # --- Обработка геолокации ---
 async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обрабатывает полученные координаты и предлагает выбор источника поиска."""
     try:
         lat = update.message.location.latitude
         lon = update.message.location.longitude
@@ -183,7 +206,6 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- Обработка кнопок обратного вызова ---
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обрабатывает выбор источника поиска."""
     query = update.callback_query
     await query.answer()
     try:
@@ -201,19 +223,18 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
 
 # --- Поиск через Google API ---
 async def search_with_google(query, context: ContextTypes.DEFAULT_TYPE, lat: float, lon: float):
-    """Поиск мест через Google Places API с фильтрацией по расстоянию и пагинацией."""
     try:
         place_queries = [
             {"label": "🌳 Парки", "type": "park", "keyword": "park", "radius": 20000},
             {"label": "🏛 Достопримечательности", "type": "tourist_attraction", "keyword": "tourist attraction|museum|landmark", "radius": 20000},
             {"label": "🚛 Парковка для фур", "keyword": "грузовая парковка|truck parking", "radius": 10000},
-            {"label": "🏨 Отельл/Мотель", "type": "lodging", "keyword": "мотель|гостиница|hotel|motel", "radius": 10000},
+            {"label": "🏨 Отель/Мотель", "type": "lodging", "keyword": "мотель|гостиница|hotel|motel", "radius": 10000},
             {"label": "🛒 Магазин", "type": "supermarket", "radius": 5000},
             {"label": "🧺 Прачечная", "keyword": "прачечная самообслуживания|self-service laundry", "radius": 5000},
             {"label": "🚿 Душевые", "keyword": "душ|сауна|truck stop showers", "radius": 10000},
         ]
         found_results_grouped = {}
-        base_url = "https://maps.googleapis.com/maps/api/place/" 
+        base_url = "https://maps.googleapis.com/maps/api/place/"
         user_location = (lat, lon)
         for query_info in place_queries:
             label = query_info["label"]
@@ -280,9 +301,8 @@ async def search_with_google(query, context: ContextTypes.DEFAULT_TYPE, lat: flo
         logging.error(f"Ошибка поиска Google API: {e}", exc_info=True)
         await query.message.reply_text("❌ Ошибка при поиске через Google Maps.")
 
-# --- Поиск через Overpass API --- 
+# --- Поиск через Overpass API ---
 async def search_with_overpass(query, context: ContextTypes.DEFAULT_TYPE, lat: float, lon: float):
-    """Поиск мест через Overpass API (OpenStreetMap)."""
     try:
         place_queries = [
             {"label": "🌳 Парки", "query": f'node["leisure"="park"](around:10000,{lat},{lon});'},
@@ -333,7 +353,7 @@ async def search_with_overpass(query, context: ContextTypes.DEFAULT_TYPE, lat: f
         logging.error(f"Ошибка поиска Overpass API: {e}", exc_info=True)
         await query.message.reply_text("❌ Ошибка при поиске через OpenStreetMap.")
 
-# --- Форматирование ответа с найденными местами --- 
+# --- Форматирование ответа с найденными местами ---
 def format_places_reply(results, source):
     messages = []
     buttons = []
@@ -351,7 +371,7 @@ def format_places_reply(results, source):
 # --- Запуск бота ---
 if __name__ == '__main__':
     if not all([TELEGRAM_TOKEN, OPENAI_API_KEY, GOOGLE_MAPS_API_KEY]):
-        logging.critical("Не установлены все необходименные переменные окружения!")
+        logging.critical("Не установлены все необходимые переменные окружения!")
     else:
         app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
         app.add_handler(CommandHandler("start", start))
