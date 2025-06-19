@@ -105,8 +105,36 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user_input:
         await update.message.reply_text("Чем могу помочь?")
         return
-    lowered = user_input.lower()
 
+    user_id = update.effective_user.id
+    if user_id not in user_contexts:
+        user_contexts[user_id] = []
+
+    # Сохраняем пользовательский ввод
+    user_contexts[user_id].append({"role": "user", "content": user_input})
+
+    # Подгружаем промт и базу знаний
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    kb_snippet = load_relevant_knowledge(user_input)
+
+    if kb_snippet:
+        # Добавляем базу знаний
+        messages.append({"role": "system", "content": "📚 База знаний:\n" + kb_snippet})
+        # Заставляем модель обратить внимание
+        messages.append({"role": "system", "content": "⚠️ ОТВЕЧАЙ ТОЛЬКО НА ОСНОВЕ ЭТИХ ДАННЫХ. НЕ ИСПОЛЬЗУЙ СВОИ ЗНАНИЯ, ЕСЛИ ОНИ НЕ ПОДТВЕРЖДЕНЫ БАЗОЙ."})
+
+    # Добавляем контекст
+    messages += user_contexts[user_id][-MAX_TURNS:]
+
+    # Отправляем запрос в GPT
+    response = await ask_gpt(messages)
+    
+    if response and response.choices:
+        assistant_reply = response.choices[0].message.content.strip()
+        user_contexts[user_id].append({"role": "assistant", "content": assistant_reply})
+        await update.message.reply_text(assistant_reply)
+    else:
+        await update.message.reply_text("❌ Ошибка при запросе к GPT. Попробуй позже.")
     # Генерация изображения
     if any(keyword in lowered for keyword in ["нарисуй", "покажи", "сгенерируй", "изображение", "картинку", "картина"]):
         try:
