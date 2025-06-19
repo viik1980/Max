@@ -17,12 +17,13 @@ import requests
 import asyncio
 from urllib.parse import quote as urllib_quote
 from geopy.distance import geodesic
+import numpy as np
 
 # --- Настройки ---
-user_contexts = {}  # {user_id: [{"role": "user", "content": "..."}, ...]}
+user_contexts = {}
 MAX_TURNS = 2
-MAX_DISTANCE_KM = 50        # Максимальное расстояние для результатов (в км)
-REQUEST_TIMEOUT = 15        # Таймаут для внешних HTTP-запросов в секундах
+MAX_DISTANCE_KM = 50
+REQUEST_TIMEOUT = 15
 
 # --- Загрузка .env ---
 load_dotenv()
@@ -49,73 +50,41 @@ def split_text_into_chunks(text, chunk_size=500):
     words = text.split()
     return [' '.join(words[i:i+chunk_size]) for i in range(0, len(words), chunk_size)]
 
-def load_relevant_knowledge(user_input, knowledge_dir="knowledge"):
-    print("🔹 Проверяю знание для запроса:", user_input)
-    if not os.path.exists(knowledge_dir):
-        print(f"❌ Директория {knowledge_dir} не найдена.")
-        return "❌ База знаний недоступна."
-
-    files = os.listdir(knowledge_dir)
-    print("🔹 Найдены файлы в базе знаний:", files)
-
-    relevant_info = []
-    for filename in files:
-        path = os.path.join(knowledge_dir, filename)
-        if os.path.exists(path):
-            size = os.path.getsize(path)
-            print(f"📄 Читаю файл: {filename} (размер: {size} байт)")
-            with open(path, "r", encoding="utf-8") as file:
-                full_text = file.read()
-
-            chunks = split_text_into_chunks(full_text)
-            print(f"📑 Файл разбит на {len(chunks)} фрагментов.")
-
-            try:
-                input_embedding = openai.Embedding.create(
-                    input=[user_input],
-                    model="text-embedding-ada-002"
-                )["data"][0]["embedding"]
-            except Exception as e:
-                print(f"❌ Ошибка при создании embedding запроса: {e}")
-                return "❌ Ошибка обработки запроса."
-
-            for i, chunk in enumerate(chunks):
-                try:
-                    chunk_embedding = openai.Embedding.create(
-                        input=[chunk],
-                        model="text-embedding-ada-002"
-                    )["data"][0]["embedding"]
-                    sim = cosine_similarity(input_embedding, chunk_embedding)
-                    print(f"🔍 [{filename} / chunk {i}] Похожесть: {sim:.4f}")
-                    if sim > 0.3:  # 👈 временно занижаем порог
-                        relevant_info.append(chunk)
-                except Exception as e:
-                    print(f"⚠️ Ошибка при embedding chunk {i}: {e}")
-
-    if relevant_info:
-        print(f"✅ Найдено {len(relevant_info)} релевантных фрагментов.")
-        return "\n\n".join(relevant_info[:5])
-    else:
-        print("❗ Ничего не найдено в базе знаний.")
-        return "📚 База знаний: ничего не найдено."
-
 def cosine_similarity(a, b):
     a = np.array(a)
     b = np.array(b)
     return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
-    
-    knowledge_text = "\n".join(texts) or "📚 База знаний: ничего не найдено."
-    logging.info(f"Итоговый текст базы знаний:\n{knowledge_text}")
-    return knowledge_text
+
+def load_relevant_knowledge(user_input, knowledge_dir="knowledge"):
+    if not os.path.exists(knowledge_dir):
+        return "❌ База знаний недоступна."
+
+    relevant_info = []
+    try:
+        input_embedding = openai.Embedding.create(input=[user_input], model="text-embedding-ada-002")["data"][0]["embedding"]
+    except Exception as e:
+        logging.error(f"Ошибка при создании embedding запроса: {e}")
+        return "❌ Ошибка обработки запроса."
+
+    for filename in os.listdir(knowledge_dir):
+        path = os.path.join(knowledge_dir, filename)
+        with open(path, "r", encoding="utf-8") as file:
+            chunks = split_text_into_chunks(file.read())
+            for chunk in chunks:
+                try:
+                    chunk_embedding = openai.Embedding.create(input=[chunk], model="text-embedding-ada-002")["data"][0]["embedding"]
+                    if cosine_similarity(input_embedding, chunk_embedding) > 0.3:
+                        relevant_info.append(chunk)
+                except Exception as e:
+                    logging.warning(f"Ошибка embedding для фрагмента: {e}")
+    return "\n\n".join(relevant_info[:5]) if relevant_info else "📚 База знаний: ничего не найдено."
 
 # --- GPT-запрос ---
 async def ask_gpt(messages):
-    logging.info(f"Сообщения для GPT: {messages}")
     try:
-        response = openai.ChatCompletion.create(model="gpt-4.5-preview-2025-02-27", messages=messages)
-        return response
+        return openai.ChatCompletion.create(model="gpt-4.5-preview-2025-02-27", messages=messages)
     except Exception as e:
-        logging.warning(f"gpt-4.5-preview-2025-02-27 недоступен, fallback: {e}")
+        logging.warning(f"GPT-4.5 не сработал: {e}")
         try:
             return openai.ChatCompletion.create(model="gpt-3.5-turbo", messages=messages)
         except Exception as e2:
