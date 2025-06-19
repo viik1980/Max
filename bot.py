@@ -83,9 +83,9 @@ def load_relevant_knowledge(user_input, knowledge_dir="knowledge"):
 # --- GPT-запрос ---
 async def ask_gpt(messages):
     try:
-        return openai.ChatCompletion.create(model="gpt-4.5-preview-2025-02-27", messages=messages)
+        return openai.ChatCompletion.create(model="gpt-4.1", messages=messages)
     except Exception as e:
-        logging.warning(f"GPT-4.5 не сработал: {e}")
+        logging.warning(f"gpt-4.1 не сработал: {e}")
         try:
             return openai.ChatCompletion.create(model="gpt-3.5-turbo", messages=messages)
         except Exception as e2:
