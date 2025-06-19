@@ -5,7 +5,9 @@ from openai import AsyncOpenAI  # Новое API
 import tempfile
 from telegram import Update
 from telegram.ext import (
-    ApplicationBuilder,
+   InlineKeyboardMarkup, 
+   InlineKeyboardButton 
+   ApplicationBuilder,
     CommandHandler,
     MessageHandler,
     CallbackQueryHandler,
