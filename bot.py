@@ -50,6 +50,7 @@ except FileNotFoundError:
 # Загрузка базы знаний по ключевым словам
 def load_relevant_knowledge(user_input: str) -> str:
     keywords_map = {
+        "Рассчитай" : "Данные для расчёта графика", "Rezim_RTO.md",
         "отдых": "Rezim_RTO.md",
         "Как разорвать паузу 45 часов": "Rezim_RTO.md",
         "смена": "Rezim_RTO.md",
