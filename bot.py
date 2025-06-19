@@ -51,6 +51,7 @@ except FileNotFoundError:
 def load_relevant_knowledge(user_input: str) -> str:
     keywords_map = {
         "отдых": "Rezim_RTO.md",
+        "Как разорвать паузу 45 часов": "Rezim_RTO.md",
         "смена": "Rezim_RTO.md",
         "пауза": "Rezim_RTO.md",
         "разрыв паузы": "Rezim_RTO.md",
