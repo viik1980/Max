@@ -3,11 +3,9 @@ import os
 import openai
 from openai import AsyncOpenAI  # Новое API
 import tempfile
-from telegram import Update
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
-   InlineKeyboardMarkup, 
-   InlineKeyboardButton 
-   ApplicationBuilder,
+    ApplicationBuilder,
     CommandHandler,
     MessageHandler,
     CallbackQueryHandler,
