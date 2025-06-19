@@ -112,23 +112,23 @@ def load_relevant_knowledge(user_input: str) -> str:
 async def ask_gpt(messages):
     try:
         response = await client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4.1",
             messages=messages,
             temperature=0.2,
-            max_tokens=1000,
+            max_tokens=10000,
             top_p=1.0,
             frequency_penalty=0.0,
             presence_penalty=0.0
         )
         return response
     except Exception as e:
-        logging.warning(f"[GPT] GPT-4o недоступна, fallback: {e}")
+        logging.warning(f"[GPT] gpt-4.1 недоступна, fallback: {e}")
         try:
             response = await client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=messages,
                 temperature=0.2,
-                max_tokens=1000
+                max_tokens=10000
             )
             return response
         except Exception as e2:
@@ -137,7 +137,7 @@ async def ask_gpt(messages):
 
 # --- Команда /start ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Здорова, я — Макс. Диспетчер, друг и напарник. Пиши, говори или отправляй координаты — разберёмся!")
+    await update.message.reply_text("Здарова, я — Макс. Диспетчер, друг и напарник. Пиши, говори или отправляй координаты — разберёмся!")
 
 # --- Обработка текстовых сообщений ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
