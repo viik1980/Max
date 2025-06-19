@@ -17,7 +17,7 @@ import requests
 import asyncio
 from urllib.parse import quote as urllib_quote
 from geopy.distance import geodesic
-import numpy as np
+import math
 
 # --- Настройки ---
 user_contexts = {}
@@ -51,9 +51,10 @@ def split_text_into_chunks(text, chunk_size=500):
     return [' '.join(words[i:i+chunk_size]) for i in range(0, len(words), chunk_size)]
 
 def cosine_similarity(a, b):
-    a = np.array(a)
-    b = np.array(b)
-    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+    dot_product = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(x * x for x in b))
+    return dot_product / (norm_a * norm_b) if norm_a and norm_b else 0.0
 
 def load_relevant_knowledge(user_input, knowledge_dir="knowledge"):
     if not os.path.exists(knowledge_dir):
