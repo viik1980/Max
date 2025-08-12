@@ -122,7 +122,7 @@ async def ask_gpt(messages):
         )
         return response
     except Exception as e:
-        logging.warning(f"[GPT] gpt-4.1 недоступна, fallback: {e}")
+        logging.warning(f"[GPT] gpt-5 недоступна, fallback: {e}")
         try:
             response = await client.chat.completions.create(
                 model="gpt-3.5-turbo",
