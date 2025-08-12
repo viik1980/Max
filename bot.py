@@ -115,10 +115,11 @@ async def ask_gpt(messages):
             model="gpt-5",
             messages=messages,
             temperature=0.2,
-            max_completion_tokens,
+            max_tokens=1000,  # например, 1000 токенов,
             top_p=1.0,
             frequency_penalty=0.0,
-            presence_penalty=0.0)
+            presence_penalty=0.0
+        )
         return response
     except Exception as e:
         logging.warning(f"[GPT] gpt-5 недоступна, fallback: {e}")
