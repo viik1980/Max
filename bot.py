@@ -114,7 +114,7 @@ async def ask_gpt(messages):
         response = await client.chat.completions.create(
             model="gpt-5",
             messages=messages,
-            temperature=0.2,
+            temperature=1,
              max_completion_tokens=4000,  # Используй max_completion_tokens вместо max_tokens
             top_p=1.0,
             frequency_penalty=0.0,
