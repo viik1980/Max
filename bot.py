@@ -112,7 +112,7 @@ def load_relevant_knowledge(user_input: str) -> str:
 async def ask_gpt(messages):
     try:
         response = await client.chat.completions.create(
-            model="gpt-4.1",
+            model="gpt-5",
             messages=messages,
             temperature=0.2,
             max_tokens=10000,
