@@ -115,7 +115,7 @@ async def ask_gpt(messages):
             model="gpt-5",
             messages=messages,
             temperature=0.2,
-            max_tokens=10000,
+            max_tokens=4000,
             top_p=1.0,
             frequency_penalty=0.0,
             presence_penalty=0.0
