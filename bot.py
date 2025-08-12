@@ -115,7 +115,7 @@ async def ask_gpt(messages):
             model="gpt-5",
             messages=messages,
             temperature=0.2,
-            max_tokens=1000,  # например, 1000 токенов,
+             max_completion_tokens=4000,  # Используй max_completion_tokens вместо max_tokens
             top_p=1.0,
             frequency_penalty=0.0,
             presence_penalty=0.0
@@ -128,7 +128,7 @@ async def ask_gpt(messages):
                 model="gpt-3.5-turbo",
                 messages=messages,
                 temperature=0.2,
-                max_tokens=10000
+                max_tokens=4000
             )
             return response
         except Exception as e2:
