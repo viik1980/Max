@@ -1,7 +1,8 @@
 import logging
 import os
 import openai
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+# Добавлен ChatAction
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ChatAction
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -151,6 +152,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- Обработка текстовых сообщений ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Показываем статус "печатает..."
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+
     user_input = update.message.text.strip()
     if not user_input:
         await update.message.reply_text("Чем могу помочь?")
@@ -188,6 +192,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- Обработка голосовых сообщений ---
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Показываем статус "печатает..."
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+
     try:
         file = await update.message.voice.get_file()
         with tempfile.NamedTemporaryFile(delete=False, suffix=".oga") as f:
@@ -273,6 +280,8 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
 # --- Поиск через Google API ---
 async def search_with_google(query, context: ContextTypes.DEFAULT_TYPE, lat: float, lon: float):
     """Поиск мест через Google Places API с фильтрацией по расстоянию и пагинацией."""
+    # Показываем статус "печатает..." в чате, где была нажата кнопка
+    await context.bot.send_chat_action(chat_id=query.message.chat_id, action=ChatAction.TYPING)
     try:
         place_queries = [
             {"label": "🌳 Парки", "type": "park", "keyword": "park", "radius": 20000},
@@ -356,6 +365,8 @@ async def search_with_google(query, context: ContextTypes.DEFAULT_TYPE, lat: flo
 # --- Поиск через Overpass API ---
 async def search_with_overpass(query, context: ContextTypes.DEFAULT_TYPE, lat: float, lon: float):
     """Поиск мест через Overpass API (OpenStreetMap)."""
+    # Показываем статус "печатает..." в чате, где была нажата кнопка
+    await context.bot.send_chat_action(chat_id=query.message.chat_id, action=ChatAction.TYPING)
     try:
         place_queries = [
             {"label": "🌳 Парки", "query": f'node["leisure"="park"](around:10000,{lat},{lon});'},
@@ -441,3 +452,4 @@ if __name__ == '__main__':
         app.add_handler(CallbackQueryHandler(handle_callback_query))
         logging.info("Бот запущен. Ожидание сообщений...")
         app.run_polling()
+
