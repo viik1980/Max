@@ -1,8 +1,10 @@
 import logging
 import os
 import openai
-# Добавлен ChatAction
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ChatAction
+# --- ИЗМЕНЕНИЯ ЗДЕСЬ ---
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.constants import ChatAction
+# -------------------------
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -369,23 +371,27 @@ async def search_with_overpass(query, context: ContextTypes.DEFAULT_TYPE, lat: f
     await context.bot.send_chat_action(chat_id=query.message.chat_id, action=ChatAction.TYPING)
     try:
         place_queries = [
-            {"label": "🌳 Парки", "query": f'node["leisure"="park"](around:10000,{lat},{lon});'},
-            {"label": "🏛 Достопримечательности", "query": f'node["tourism"~"attraction|museum|monument"](around:10000,{lat},{lon});'},
-            {"label": "🅿️ Парковка для фур", "query": f'node["highway"="services"]["access"="truck"](around:10000,{lat},{lon});'},
-            {"label": "🏨 Отель/Мотель", "query": f'node["tourism"~"hotel|motel"](around:10000,{lat},{lon});'},
-            {"label": "🛒 Магазин", "query": f'node["shop"="supermarket"](around:5000,{lat},{lon});'},
-            {"label": "🧺 Прачечная", "query": f'node["shop"="laundry"](around:5000,{lat},{lon});'},
-            {"label": "🚿 Душевые", "query": f'node["amenity"="shower"](around:10000,{lat},{lon});'},
+            {"label": "🌳 Парки", "query": 'node["leisure"="park"]'},
+            {"label": "🏛 Достопримечательности", "query": 'node["tourism"~"attraction|museum|monument"]'},
+            {"label": "🅿️ Парковка для фур", "query": 'node["amenity"="parking"]["truck"="yes"]'},
+            {"label": "🏨 Отель/Мотель", "query": 'node["tourism"~"hotel|motel"]'},
+            {"label": "🛒 Магазин", "query": 'node["shop"="supermarket"]'},
+            {"label": "🧺 Прачечная", "query": 'node["shop"="laundry"]'},
+            {"label": "🚿 Душевые", "query": 'node["amenity"="shower"]'},
         ]
         found_results_grouped = {}
         overpass_url = "http://overpass-api.de/api/interpreter"
         user_location = (lat, lon)
+        
+        radius_m = MAX_DISTANCE_KM * 1000
+
         for query_info in place_queries:
             label = query_info["label"]
-            overpass_query = f"[out:json];({query_info['query']});out body;"
+            # Добавляем фильтр по радиусу в каждый запрос
+            full_query = f"[out:json];({query_info['query']}(around:{radius_m},{lat},{lon}););out body;"
             try:
-                logging.info(f"Overpass API запрос для {label}: {overpass_query}")
-                res = requests.post(overpass_url, data={"data": overpass_query}, timeout=REQUEST_TIMEOUT)
+                logging.info(f"Overpass API запрос для {label}: {full_query}")
+                res = requests.post(overpass_url, data={"data": full_query}, timeout=REQUEST_TIMEOUT)
                 res.raise_for_status()
                 data = res.json()
                 logging.info(f"Результаты Overpass API для {label}: {len(data.get('elements', []))} элементов")
@@ -393,15 +399,17 @@ async def search_with_overpass(query, context: ContextTypes.DEFAULT_TYPE, lat: f
                     if label not in found_results_grouped:
                         found_results_grouped[label] = []
                     for element in data["elements"][:10]:
-                        name = element["tags"].get("name", "Без названия")
+                        name = element.get("tags", {}).get("name", "Без названия")
                         address_parts = []
+                        tags = element.get("tags", {})
                         for tag in ["addr:street", "addr:housenumber", "addr:city", "addr:country"]:
-                            if tag in element["tags"]:
-                                address_parts.append(element["tags"][tag])
+                            if tag in tags:
+                                address_parts.append(tags[tag])
                         address = ", ".join(address_parts) if address_parts else "Без адреса"
                         el_lat, el_lon = element["lat"], element["lon"]
                         place_location = (el_lat, el_lon)
                         distance_km = geodesic(user_location, place_location).kilometers
+                        # Проверка дистанции на всякий случай, хотя API уже должен был отфильтровать
                         if distance_km <= MAX_DISTANCE_KM:
                             maps_url = f"https://www.google.com/maps/dir/?api=1&origin={lat},{lon}&destination={el_lat},{el_lon}&travelmode=driving"
                             if (name, address) not in [(item[0], item[1]) for item in found_results_grouped[label]]:
@@ -431,13 +439,12 @@ def format_places_reply(results, source):
             places.sort(key=lambda x: x[3])
             msg = f"*{label}* ({source}):\n"
             for name, address, url, dist_km in places[:5]:
-                msg += f"- [{name}]({url}), {address} | 🚗 {dist_km:.1f} км\n"
+                # Экранируем символы, которые могут сломать Markdown
+                name_escaped = name.replace('[', '\\[').replace(']', '\\]')
+                msg += f"- [{name_escaped}]({url}), {address} | 🚗 {dist_km:.1f} км\n"
             messages.append(msg)
     
-    # Можно добавить кнопку для просмотра всех результатов, если их много
-    # buttons.append([InlineKeyboardButton("Показать все", callback_data="show_all_places")])
-    
-    return messages, InlineKeyboardMarkup(buttons) if buttons else None
+    return messages, None # Убрал кнопку "Все места" для простоты
 
 # --- Запуск бота ---
 if __name__ == '__main__':
@@ -452,4 +459,3 @@ if __name__ == '__main__':
         app.add_handler(CallbackQueryHandler(handle_callback_query))
         logging.info("Бот запущен. Ожидание сообщений...")
         app.run_polling()
-
