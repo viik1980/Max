@@ -19,7 +19,7 @@ from geopy.distance import geodesic
 from openai import AsyncOpenAI  # Новый клиент для openai>=1.0.0
 
 # --- Настройки ---
-user_contexts = {}  # {user_id: [{"role": "user", "content": "..."}, ...]}
+user_contexts = {}   {user_id: [{"role": "user", "content": "..."}, ...]}
 MAX_TURNS = 2
 MAX_DISTANCE_KM = 40        # Максимальное расстояние для результатов (в км)
 REQUEST_TIMEOUT = 15        # Таймаут для внешних HTTP-запросов в секундах
