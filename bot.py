@@ -11,18 +11,18 @@ from telegram.ext import (
     ContextTypes,
 )
 from dotenv import load_dotenv
-from overpass_utils import query_overpass, parse_places
 import requests
 import asyncio
 from urllib.parse import quote as urllib_quote
 from geopy.distance import geodesic
-from openai import AsyncOpenAI  # Новый клиент для openai>=1.0.0
+from openai import AsyncOpenAI
+import tempfile
 
 # --- Настройки ---
-user_contexts = {}   {user_id: [{"role": "user", "content": "..."}, ...]}
+user_contexts = {}  # {user_id: [{"role": "user", "content": "..."}, ...]}
 MAX_TURNS = 3
-MAX_DISTANCE_KM = 40        # Максимальное расстояние для результатов (в км)
-REQUEST_TIMEOUT = 15        # Таймаут для внешних HTTP-запросов в секундах
+MAX_DISTANCE_KM = 40  # Максимальное расстояние для результатов (в км)
+REQUEST_TIMEOUT = 15  # Таймаут для внешних HTTP-запросов в секундах
 
 # --- Загрузка .env ---
 load_dotenv()
@@ -115,25 +115,35 @@ async def ask_gpt(messages):
             model="gpt-5",
             messages=messages,
             temperature=1,
-             max_completion_tokens=4000,  # Используй max_completion_tokens вместо max_tokens
+            max_tokens=4000,
             top_p=1.0,
             frequency_penalty=0.0,
             presence_penalty=0.0
         )
         return response
     except Exception as e:
-        logging.warning(f"[GPT] gpt-5 недоступна, fallback: {e}")
+        logging.warning(f"[GPT] gpt-5 недоступна, fallback на gpt-4.1-turbo: {e}")
         try:
             response = await client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model="gpt-4.1-turbo",
                 messages=messages,
-                temperature=0.2,
+                temperature=0.7,
                 max_tokens=4000
             )
             return response
         except Exception as e2:
-            logging.error(f"[GPT] GPT-3.5 тоже не сработала: {e2}")
-            return None
+            logging.warning(f"[GPT] gpt-4.1-turbo недоступна, fallback на gpt-3.5-turbo: {e2}")
+            try:
+                response = await client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=messages,
+                    temperature=0.2,
+                    max_tokens=4000
+                )
+                return response
+            except Exception as e3:
+                logging.error(f"[GPT] Все модели GPT не сработали: {e3}")
+                return None
 
 # --- Команда /start ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -187,6 +197,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with open(audio_path, "rb") as audio_file:
             transcript = await client.audio.transcriptions.create(model="whisper-1", file=audio_file)
             user_text = transcript.text
+
+        os.remove(audio_path)  # Удаляем временный файл
 
         if not user_text:
             await update.message.reply_text("🎧 Не смог разобрать голос. Попробуй снова.")
@@ -265,14 +277,14 @@ async def search_with_google(query, context: ContextTypes.DEFAULT_TYPE, lat: flo
         place_queries = [
             {"label": "🌳 Парки", "type": "park", "keyword": "park", "radius": 20000},
             {"label": "🏛 Достопримечательности", "type": "tourist_attraction", "keyword": "tourist attraction|museum|landmark", "radius": 20000},
-            {"label": "lsa Парковка для фур", "keyword": "грузовая парковка|truck parking", "radius": 10000},
-            {"label": "ホテл/Мотель", "type": "lodging", "keyword": "мотель|гостиница|hotel|motel", "radius": 10000},
+            {"label": "🅿️ Парковка для фур", "keyword": "грузовая парковка|truck parking", "radius": 10000},
+            {"label": "🏨 Отель/Мотель", "type": "lodging", "keyword": "мотель|гостиница|hotel|motel", "radius": 10000},
             {"label": "🛒 Магазин", "type": "supermarket", "radius": 5000},
             {"label": "🧺 Прачечная", "keyword": "прачечная самообслуживания|self-service laundry", "radius": 5000},
             {"label": "🚿 Душевые", "keyword": "душ|сауна|truck stop showers", "radius": 10000},
         ]
         found_results_grouped = {}
-        base_url = "https://maps.googleapis.com/maps/api/place/" 
+        base_url = "https://maps.googleapis.com/maps/api/place/"
         user_location = (lat, lon)
 
         for query_info in place_queries:
@@ -341,15 +353,15 @@ async def search_with_google(query, context: ContextTypes.DEFAULT_TYPE, lat: flo
         logging.error(f"Ошибка поиска Google API: {e}", exc_info=True)
         await query.message.reply_text("❌ Ошибка при поиске через Google Maps.")
 
-# --- Поиск через Overpass API --- 
+# --- Поиск через Overpass API ---
 async def search_with_overpass(query, context: ContextTypes.DEFAULT_TYPE, lat: float, lon: float):
     """Поиск мест через Overpass API (OpenStreetMap)."""
     try:
         place_queries = [
             {"label": "🌳 Парки", "query": f'node["leisure"="park"](around:10000,{lat},{lon});'},
             {"label": "🏛 Достопримечательности", "query": f'node["tourism"~"attraction|museum|monument"](around:10000,{lat},{lon});'},
-            {"label": "lsa Парковка для фур", "query": f'node["highway"="services"]["access"="truck"](around:10000,{lat},{lon});'},
-            {"label": "ホテл/Мотель", "query": f'node["tourism"~"hotel|motel"](around:10000,{lat},{lon});'},
+            {"label": "🅿️ Парковка для фур", "query": f'node["highway"="services"]["access"="truck"](around:10000,{lat},{lon});'},
+            {"label": "🏨 Отель/Мотель", "query": f'node["tourism"~"hotel|motel"](around:10000,{lat},{lon});'},
             {"label": "🛒 Магазин", "query": f'node["shop"="supermarket"](around:5000,{lat},{lon});'},
             {"label": "🧺 Прачечная", "query": f'node["shop"="laundry"](around:5000,{lat},{lon});'},
             {"label": "🚿 Душевые", "query": f'node["amenity"="shower"](around:10000,{lat},{lon});'},
@@ -359,13 +371,13 @@ async def search_with_overpass(query, context: ContextTypes.DEFAULT_TYPE, lat: f
         user_location = (lat, lon)
         for query_info in place_queries:
             label = query_info["label"]
-            overpass_query = f"[out:json];{query_info['query']}out body;"
+            overpass_query = f"[out:json];({query_info['query']});out body;"
             try:
                 logging.info(f"Overpass API запрос для {label}: {overpass_query}")
                 res = requests.post(overpass_url, data={"data": overpass_query}, timeout=REQUEST_TIMEOUT)
                 res.raise_for_status()
                 data = res.json()
-                logging.info(f"Результаты Overpass API для {label}: {data.get('elements', [])}")
+                logging.info(f"Результаты Overpass API для {label}: {len(data.get('elements', []))} элементов")
                 if data.get("elements"):
                     if label not in found_results_grouped:
                         found_results_grouped[label] = []
@@ -394,7 +406,7 @@ async def search_with_overpass(query, context: ContextTypes.DEFAULT_TYPE, lat: f
         logging.error(f"Ошибка поиска Overpass API: {e}", exc_info=True)
         await query.message.reply_text("❌ Ошибка при поиске через OpenStreetMap.")
 
-# Форматирование ответа с найденными местами 
+# Форматирование ответа с найденными местами
 def format_places_reply(results, source):
     messages = []
     buttons = []
@@ -404,12 +416,17 @@ def format_places_reply(results, source):
 
     for label, places in results.items():
         if places:
+            # Сортировка по расстоянию
+            places.sort(key=lambda x: x[3])
             msg = f"*{label}* ({source}):\n"
             for name, address, url, dist_km in places[:5]:
                 msg += f"- [{name}]({url}), {address} | 🚗 {dist_km:.1f} км\n"
             messages.append(msg)
-    buttons.append([InlineKeyboardButton("Все места", callback_data="all_places")])
-    return messages, InlineKeyboardMarkup(buttons)
+    
+    # Можно добавить кнопку для просмотра всех результатов, если их много
+    # buttons.append([InlineKeyboardButton("Показать все", callback_data="show_all_places")])
+    
+    return messages, InlineKeyboardMarkup(buttons) if buttons else None
 
 # --- Запуск бота ---
 if __name__ == '__main__':
@@ -423,4 +440,4 @@ if __name__ == '__main__':
         app.add_handler(MessageHandler(filters.LOCATION, handle_location))
         app.add_handler(CallbackQueryHandler(handle_callback_query))
         logging.info("Бот запущен. Ожидание сообщений...")
-        asyncio.run(app.run_polling())
+        app.run_polling()
